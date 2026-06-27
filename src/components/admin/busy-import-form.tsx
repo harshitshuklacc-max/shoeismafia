@@ -3,11 +3,13 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { importBusyData } from "@/actions/inventory";
+import { importBusyBatch, finalizeBusyImport } from "@/actions/inventory";
 import { parseBusyFile } from "@/lib/busy-parser";
 import { toast } from "sonner";
 import { Upload, FileSpreadsheet, FileText, FileType2 } from "lucide-react";
 import type { BusyImportRow } from "@/types";
+
+const BATCH_SIZE = 50;
 
 export function BusyImportForm() {
   const [loading, setLoading] = useState(false);
@@ -15,6 +17,8 @@ export function BusyImportForm() {
   const [allRows, setAllRows] = useState<BusyImportRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [fileType, setFileType] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
@@ -22,6 +26,8 @@ export function BusyImportForm() {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     setFileType(ext);
     setLoading(true);
+    setProgress(0);
+    setProgressLabel("");
 
     try {
       const rows = await parseBusyFile(file);
@@ -49,20 +55,53 @@ export function BusyImportForm() {
     }
 
     setLoading(true);
-    const result = await importBusyData(allRows, fileName, fileType);
-    setLoading(false);
+    setProgress(0);
 
-    if (result.success && result.data) {
-      toast.success(
-        `Imported ${result.data.imported} products (${result.data.failed} failed)`
-      );
+    let totalImported = 0;
+    let totalFailed = 0;
+    const totalBatches = Math.ceil(allRows.length / BATCH_SIZE);
+
+    try {
+      for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const batch = allRows.slice(i, i + BATCH_SIZE);
+
+        setProgressLabel(`Importing batch ${batchNumber} of ${totalBatches}...`);
+        setProgress(Math.round((i / allRows.length) * 100));
+
+        const result = await importBusyBatch(batch, fileName);
+
+        if (!result.success || !result.data) {
+          await finalizeBusyImport(
+            fileName,
+            fileType,
+            allRows.length,
+            totalImported,
+            totalFailed + (allRows.length - i)
+          );
+          toast.error(result.error || `Import stopped at batch ${batchNumber}`);
+          return;
+        }
+
+        totalImported += result.data.imported;
+        totalFailed += result.data.failed;
+        setProgress(Math.round(((i + batch.length) / allRows.length) * 100));
+      }
+
+      await finalizeBusyImport(fileName, fileType, allRows.length, totalImported, totalFailed);
+
+      toast.success(`Imported ${totalImported} products (${totalFailed} failed)`);
       setPreview([]);
       setAllRows([]);
       setFileName("");
       setFileType("");
+      setProgress(0);
+      setProgressLabel("");
       if (fileRef.current) fileRef.current.value = "";
-    } else {
-      toast.error(result.error || "Import failed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -105,7 +144,7 @@ export function BusyImportForm() {
               Op. Qty., Qty. In, Qty. Out, Cl. Qty.
             </p>
             <p className="mt-1 text-xs">
-              BCN is used as the barcode. Cl. Qty. is imported as stock quantity. CSV and Excel exports with the same columns are also supported.
+              Large imports are uploaded in batches of {BATCH_SIZE} so they work on Vercel without timing out.
             </p>
           </div>
 
@@ -119,6 +158,19 @@ export function BusyImportForm() {
               <p className="text-sm text-gray-500">
                 {allRows.length} products found • Showing preview of first {Math.min(preview.length, 10)}
               </p>
+            </div>
+          )}
+
+          {loading && progressLabel && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm text-flipkart-blue">{progressLabel}</p>
+              <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className="h-full bg-flipkart-blue transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">{progress}% complete</p>
             </div>
           )}
 

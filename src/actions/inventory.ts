@@ -148,6 +148,111 @@ export async function getLowStockProducts(threshold = 5) {
   return data || [];
 }
 
+export async function importBusyBatch(
+  rows: BusyImportRow[],
+  fileName: string
+): Promise<ActionResult<{ imported: number; failed: number }>> {
+  const MAX_BATCH = 100;
+  if (rows.length > MAX_BATCH) {
+    return { success: false, error: `Batch limit is ${MAX_BATCH} rows` };
+  }
+
+  const validRows = rows.filter((row) => row.barcode?.trim() && row.name?.trim());
+  const failed = rows.length - validRows.length;
+
+  if (validRows.length === 0) {
+    return { success: true, data: { imported: 0, failed } };
+  }
+
+  const values: unknown[] = [];
+  const placeholders: string[] = [];
+  let paramIndex = 1;
+
+  for (const row of validRows) {
+    const barcode = row.barcode.replace(/\s/g, "");
+    const slug = `${slugify(row.name)}-${barcode}`;
+
+    placeholders.push(
+      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
+    );
+    values.push(
+      barcode,
+      row.name,
+      slug,
+      row.cost_price || 0,
+      row.selling_price || 0,
+      row.mrp || row.selling_price || 0,
+      row.quantity || 0,
+      row.brand || row.art_no || null,
+      row.gst || 18,
+      row.hsn || null
+    );
+  }
+
+  try {
+    await dbQuery(
+      `INSERT INTO products (barcode, name, slug, cost_price, selling_price, mrp, quantity, brand, gst_rate, hsn_code)
+       VALUES ${placeholders.join(", ")}
+       ON CONFLICT (barcode) DO UPDATE SET
+         name = EXCLUDED.name,
+         cost_price = EXCLUDED.cost_price,
+         selling_price = EXCLUDED.selling_price,
+         mrp = EXCLUDED.mrp,
+         quantity = products.quantity + EXCLUDED.quantity,
+         brand = COALESCE(EXCLUDED.brand, products.brand),
+         gst_rate = EXCLUDED.gst_rate,
+         hsn_code = COALESCE(EXCLUDED.hsn_code, products.hsn_code),
+         updated_at = NOW()`,
+      values
+    );
+
+    const barcodes = validRows.map((row) => row.barcode.replace(/\s/g, ""));
+    await dbQuery(
+      `INSERT INTO barcode_master (barcode, product_id)
+       SELECT p.barcode, p.id
+       FROM products p
+       WHERE p.barcode = ANY($1::text[])
+       ON CONFLICT (barcode) DO NOTHING`,
+      [barcodes]
+    );
+
+    return { success: true, data: { imported: validRows.length, failed } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Batch import failed",
+    };
+  }
+}
+
+export async function finalizeBusyImport(
+  fileName: string,
+  fileType: string,
+  totalRecords: number,
+  imported: number,
+  failed: number
+): Promise<ActionResult> {
+  try {
+    await dbQuery(
+      `INSERT INTO busy_import_logs (file_name, file_type, total_records, imported_records, failed_records, errors)
+       VALUES ($1, $2, $3, $4, $5, NULL)`,
+      [fileName, fileType, totalRecords, imported, failed]
+    );
+
+    revalidatePath("/admin/inventory");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/import");
+    revalidatePath("/");
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to save import log",
+    };
+  }
+}
+
 export async function importBusyData(
   rows: BusyImportRow[],
   fileName: string,
@@ -155,113 +260,21 @@ export async function importBusyData(
 ): Promise<ActionResult<{ imported: number; failed: number }>> {
   let imported = 0;
   let failed = 0;
-  const errors: Record<string, unknown>[] = [];
 
-  for (const row of rows) {
-    if (!row.barcode || !row.name) {
-      failed++;
-      errors.push({ row, error: "Missing barcode or name" });
-      continue;
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100);
+    const result = await importBusyBatch(batch, fileName);
+
+    if (!result.success || !result.data) {
+      await finalizeBusyImport(fileName, fileType, rows.length, imported, failed + (rows.length - i));
+      return { success: false, error: result.error || "Import stopped mid-way" };
     }
 
-    try {
-      const existing = await dbQueryOne<{ id: string; quantity: number }>(
-        "SELECT id, quantity FROM products WHERE barcode = $1",
-        [row.barcode]
-      );
-
-      if (existing) {
-        const newQty = existing.quantity + (row.quantity || 0);
-        const categoryId = row.product_type
-          ? await resolveCategoryId(row.product_type)
-          : null;
-
-        await dbQuery(
-          `UPDATE products SET name = $1, cost_price = $2, selling_price = $3, mrp = $4,
-           quantity = $5, brand = $6, gst_rate = $7, hsn_code = $8,
-           category_id = COALESCE($9, category_id), updated_at = NOW()
-           WHERE id = $10`,
-          [
-            row.name,
-            row.cost_price || 0,
-            row.selling_price || 0,
-            row.mrp || 0,
-            newQty,
-            row.brand || row.product_type || null,
-            row.gst || 18,
-            row.hsn || null,
-            categoryId,
-            existing.id,
-          ]
-        );
-
-        await dbQuery(
-          `INSERT INTO inventory_logs (product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes)
-           VALUES ($1, $2, 'import', $3, $4, $5, $6)`,
-          [
-            existing.id,
-            row.barcode,
-            row.quantity || 0,
-            existing.quantity,
-            newQty,
-            `BUSY import: ${fileName}`,
-          ]
-        );
-      } else {
-        const slug = `${row.name.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-")}-${row.barcode.slice(-4)}`;
-        const categoryId = row.product_type
-          ? await resolveCategoryId(row.product_type)
-          : null;
-
-        const inserted = await dbQueryOne<{ id: string }>(
-          `INSERT INTO products (barcode, name, slug, cost_price, selling_price, mrp, quantity, brand, gst_rate, hsn_code, category_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           RETURNING id`,
-          [
-            row.barcode,
-            row.name,
-            slug,
-            row.cost_price || 0,
-            row.selling_price || 0,
-            row.mrp || 0,
-            row.quantity || 0,
-            row.brand || row.product_type || null,
-            row.gst || 18,
-            row.hsn || null,
-            categoryId,
-          ]
-        );
-
-        if (inserted) {
-          await dbQuery(
-            "INSERT INTO barcode_master (barcode, product_id) VALUES ($1, $2) ON CONFLICT (barcode) DO NOTHING",
-            [row.barcode, inserted.id]
-          );
-
-          await dbQuery(
-            `INSERT INTO inventory_logs (product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes)
-             VALUES ($1, $2, 'import', $3, 0, $4, $5)`,
-            [inserted.id, row.barcode, row.quantity || 0, row.quantity || 0, `BUSY import: ${fileName}`]
-          );
-        }
-      }
-
-      imported++;
-    } catch (err) {
-      failed++;
-      errors.push({ row, error: String(err) });
-    }
+    imported += result.data.imported;
+    failed += result.data.failed;
   }
 
-  await dbQuery(
-    `INSERT INTO busy_import_logs (file_name, file_type, total_records, imported_records, failed_records, errors)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [fileName, fileType, rows.length, imported, failed, errors.length > 0 ? JSON.stringify(errors) : null]
-  );
-
-  revalidatePath("/admin/inventory");
-  revalidatePath("/admin/products");
-  revalidatePath("/");
+  await finalizeBusyImport(fileName, fileType, rows.length, imported, failed);
 
   return { success: true, data: { imported, failed } };
 }

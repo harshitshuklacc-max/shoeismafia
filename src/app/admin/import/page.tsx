@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { BusyImportForm } from "@/components/admin/busy-import-form";
 import { formatDateTime } from "@/lib/utils";
 
+export const maxDuration = 60;
+
 export default async function ImportPage() {
   const isAdmin = await verifyAdminSession();
   if (!isAdmin) redirect("/admin/login");
