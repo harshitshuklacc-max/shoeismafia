@@ -6,6 +6,36 @@ interface TextItem {
   y: number;
 }
 
+interface PdfTextItem {
+  str: string;
+  transform: number[];
+}
+
+function isPdfTextItem(item: unknown): item is PdfTextItem {
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "str" in item &&
+    typeof (item as PdfTextItem).str === "string" &&
+    "transform" in item &&
+    Array.isArray((item as PdfTextItem).transform)
+  );
+}
+
+function getPdfTextItems(items: unknown[]): PdfTextItem[] {
+  return items.filter(isPdfTextItem);
+}
+
+function toTextItem(item: PdfTextItem, roundCoords = false): TextItem {
+  const x = item.transform[4];
+  const y = item.transform[5];
+  return {
+    str: item.str.trim(),
+    x: roundCoords ? Math.round(x) : x,
+    y: roundCoords ? Math.round(y) : y,
+  };
+}
+
 interface ParsedLine {
   cells: string[];
   raw: string;
@@ -284,13 +314,8 @@ async function parseBcnWisePdf(
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    const items: TextItem[] = textContent.items
-      .filter((item): item is typeof item & { str: string; transform: number[] } => "str" in item)
-      .map((item) => ({
-        str: item.str.trim(),
-        x: Math.round(item.transform[4]),
-        y: Math.round(item.transform[5]),
-      }))
+    const items: TextItem[] = getPdfTextItems(textContent.items as unknown[])
+      .map((item) => toTextItem(item, true))
       .filter((item) => item.str);
 
     const pageLines = groupItemsIntoLines(items);
@@ -558,8 +583,7 @@ export async function parseBusyPdf(file: File): Promise<BusyImportRow[]> {
 
   const probePage = await pdf.getPage(1);
   const probeContent = await probePage.getTextContent();
-  const probeText = probeContent.items
-    .filter((item): item is typeof item & { str: string } => "str" in item)
+  const probeText = getPdfTextItems(probeContent.items as unknown[])
     .map((item) => item.str)
     .join(" ");
 
@@ -573,13 +597,8 @@ export async function parseBusyPdf(file: File): Promise<BusyImportRow[]> {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    const items: TextItem[] = textContent.items
-      .filter((item): item is typeof item & { str: string; transform: number[] } => "str" in item)
-      .map((item) => ({
-        str: item.str,
-        x: item.transform[4],
-        y: item.transform[5],
-      }));
+    const items: TextItem[] = getPdfTextItems(textContent.items as unknown[])
+      .map((item) => toTextItem(item));
 
     const pageLines = groupTextItemsIntoLines(items);
     allLines.push(...pageLines);
