@@ -1,7 +1,11 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { getProducts, getCategories } from "@/actions/products";
 import { ProductCard } from "@/components/products/product-card";
 import { ProductFilters } from "@/components/products/product-filters";
+import { ProductPagination } from "@/components/products/product-pagination";
+
+const PRODUCTS_PER_PAGE = 20;
 
 interface ProductsPageProps {
   searchParams: Promise<{
@@ -15,7 +19,7 @@ interface ProductsPageProps {
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const params = await searchParams;
-  const page = parseInt(params.page || "1");
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
   const categorySlug = params.category;
 
   const categories = await getCategories();
@@ -28,67 +32,106 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     category: categoryId,
     sort: params.sort,
     page,
-    limit: 20,
+    limit: PRODUCTS_PER_PAGE,
     featured: params.featured === "true",
   });
 
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.max(1, Math.ceil(total / PRODUCTS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const showingFrom = total === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const showingTo = Math.min(currentPage * PRODUCTS_PER_PAGE, total);
+
+  const paginationParams = {
+    search: params.search,
+    category: params.category,
+    sort: params.sort,
+    featured: params.featured,
+  };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        <aside className="lg:w-64 shrink-0">
-          <Suspense fallback={<div className="h-64 bg-gray-100 rounded animate-pulse" />}>
-            <ProductFilters categories={categories} />
-          </Suspense>
-        </aside>
+    <div className="bg-[#f1f3f6] min-h-screen">
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row gap-4">
+          <aside className="lg:w-56 shrink-0">
+            <Suspense fallback={<div className="h-64 bg-white rounded-sm animate-pulse" />}>
+              <ProductFilters categories={categories} />
+            </Suspense>
+          </aside>
 
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold">
-                {params.search
-                  ? `Results for "${params.search}"`
-                  : categorySlug
-                  ? categories.find((c) => c.slug === categorySlug)?.name || "Products"
-                  : "All Products"}
-              </h1>
-              <p className="text-gray-500 text-sm mt-1">{total} products found</p>
-            </div>
-          </div>
+          <div className="flex-1 min-w-0">
+            <div className="bg-white border border-gray-200 rounded-sm p-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h1 className="text-lg md:text-xl font-medium text-gray-800">
+                    {params.search
+                      ? `Results for "${params.search}"`
+                      : categorySlug
+                      ? categories.find((c) => c.slug === categorySlug)?.name || "Products"
+                      : "All Products"}
+                  </h1>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {total === 0
+                      ? "No products found"
+                      : `Showing ${showingFrom}–${showingTo} of ${total} products`}
+                  </p>
+                </div>
 
-          {products.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-500 whitespace-nowrap">Sort by:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Newest", value: undefined },
+                      { label: "Price: Low to High", value: "price_asc" },
+                      { label: "Price: High to Low", value: "price_desc" },
+                    ].map((option) => {
+                      const query = new URLSearchParams();
+                      if (params.search) query.set("search", params.search);
+                      if (params.category) query.set("category", params.category);
+                      if (option.value) query.set("sort", option.value);
+                      const href = `/products?${query.toString()}`;
+                      const active =
+                        (option.value === undefined && !params.sort) || params.sort === option.value;
+
+                      return (
+                        <Link
+                          key={option.label}
+                          href={href}
+                          className={`px-3 py-1.5 rounded-sm border text-xs font-medium whitespace-nowrap ${
+                            active
+                              ? "bg-flipkart-blue text-white border-flipkart-blue"
+                              : "bg-white text-gray-700 border-gray-200 hover:border-flipkart-blue hover:text-flipkart-blue"
+                          }`}
+                        >
+                          {option.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
+            </div>
 
-              {totalPages > 1 && (
-                <div className="flex justify-center gap-2 mt-8">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <a
-                      key={p}
-                      href={`?${new URLSearchParams({ ...params, page: String(p) }).toString()}`}
-                      className={`px-4 py-2 rounded border ${
-                        p === page
-                          ? "bg-flipkart-blue text-white border-flipkart-blue"
-                          : "bg-white hover:bg-gray-50"
-                      }`}
-                    >
-                      {p}
-                    </a>
+            {products.length > 0 ? (
+              <div className="bg-white border border-gray-200 rounded-sm p-3 md:p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                  {products.map((product) => (
+                    <ProductCard key={product.id} product={product} />
                   ))}
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-16 bg-gray-50 rounded-lg">
-              <p className="text-gray-500 text-lg">No products found</p>
-              <p className="text-gray-400 text-sm mt-2">Try adjusting your filters or search</p>
-            </div>
-          )}
+
+                <ProductPagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  searchParams={paginationParams}
+                />
+              </div>
+            ) : (
+              <div className="text-center py-16 bg-white border border-gray-200 rounded-sm">
+                <p className="text-gray-600 text-lg">No products found</p>
+                <p className="text-gray-400 text-sm mt-2">Try adjusting your filters or search</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

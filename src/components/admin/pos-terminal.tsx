@@ -26,7 +26,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import type { Product, PosSaleItem } from "@/types";
-import { generateInvoicePDF, printInvoicePDF } from "@/lib/invoice";
+import { printPosReceipt } from "@/lib/pos-receipt";
 
 export function PosTerminal() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,7 +34,12 @@ export function PosTerminal() {
   const [cart, setCart] = useState<PosSaleItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [loading, setLoading] = useState(false);
-  const [lastSale, setLastSale] = useState<{ saleNumber: string; items: PosSaleItem[]; total: number } | null>(null);
+  const [lastSale, setLastSale] = useState<{
+    saleNumber: string;
+    items: PosSaleItem[];
+    total: number;
+    paymentMethod: string;
+  } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const barcodeBufferRef = useRef("");
   const barcodeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -160,39 +165,55 @@ export function PosTerminal() {
     setLoading(false);
 
     if (result.success && result.data) {
-      toast.success(`Sale completed: ${result.data.saleNumber}`);
+      const saleItems = [...cart];
+      const saleTotal = subtotal;
+      const salePayment = paymentMethod;
+
       setLastSale({
         saleNumber: result.data.saleNumber,
-        items: [...cart],
-        total: subtotal,
+        items: saleItems,
+        total: saleTotal,
+        paymentMethod: salePayment,
       });
       setCart([]);
       searchInputRef.current?.focus();
+
+      toast.success(`Sale completed: ${result.data.saleNumber}`);
+
+      printPosReceipt({
+        invoiceNumber: result.data.saleNumber,
+        items: saleItems,
+        subtotal: saleTotal,
+        total: saleTotal,
+        paymentMethod: salePayment,
+      });
     } else {
       toast.error(result.error || "Sale failed");
     }
   };
 
-  const getInvoiceData = () => {
-    if (!lastSale) return null;
-    return {
+  const handlePrintInvoice = () => {
+    if (!lastSale) return;
+    printPosReceipt({
       invoiceNumber: lastSale.saleNumber,
-      type: "pos" as const,
       items: lastSale.items,
       subtotal: lastSale.total,
       total: lastSale.total,
-      paymentMethod,
-    };
+      paymentMethod: lastSale.paymentMethod,
+    });
   };
 
-  const handlePrintInvoice = () => {
-    const data = getInvoiceData();
-    if (data) printInvoicePDF(data);
-  };
-
-  const handleDownloadInvoice = () => {
-    const data = getInvoiceData();
-    if (data) generateInvoicePDF(data);
+  const handleDownloadInvoice = async () => {
+    if (!lastSale) return;
+    const { generateInvoicePDF } = await import("@/lib/invoice");
+    generateInvoicePDF({
+      invoiceNumber: lastSale.saleNumber,
+      type: "pos",
+      items: lastSale.items,
+      subtotal: lastSale.total,
+      total: lastSale.total,
+      paymentMethod: lastSale.paymentMethod,
+    });
   };
 
   return (
