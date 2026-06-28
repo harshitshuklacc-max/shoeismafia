@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { dbQuery } from "@/lib/supabase/postgres";
+import { dbQuery, dbQueryOne } from "@/lib/supabase/postgres";
 import { revalidatePath } from "next/cache";
 import type { ActionResult, Product, Banner, Category } from "@/types";
 
@@ -229,29 +229,102 @@ export async function uploadProductImage(
   formData: FormData
 ): Promise<ActionResult> {
   const file = formData.get("file") as File;
-  if (!file) return { success: false, error: "No file provided" };
+  if (!file || file.size === 0) return { success: false, error: "No file provided" };
 
+  return saveProductImage(productId, file, formData.get("is_primary") === "true");
+}
+
+async function saveProductImage(
+  productId: string,
+  file: File,
+  setPrimary: boolean
+): Promise<ActionResult> {
   const serviceClient = createServiceClient();
-  const fileName = `${productId}/${Date.now()}-${file.name}`;
+  const safeName = file.name.replace(/[^\w.\-]/g, "_");
+  const fileName = `${productId}/${Date.now()}-${safeName}`;
 
   const { error: uploadError } = await serviceClient.storage
     .from("products")
-    .upload(fileName, file);
+    .upload(fileName, file, { contentType: file.type, upsert: false });
 
   if (uploadError) return { success: false, error: uploadError.message };
 
   const { data: urlData } = serviceClient.storage.from("products").getPublicUrl(fileName);
 
+  if (setPrimary) {
+    await dbQuery("UPDATE product_images SET is_primary = false WHERE product_id = $1", [
+      productId,
+    ]);
+  } else {
+    const existing = await dbQueryOne<{ count: string }>(
+      "SELECT COUNT(*)::text as count FROM product_images WHERE product_id = $1",
+      [productId]
+    );
+    if (parseInt(existing?.count || "0", 10) === 0) {
+      setPrimary = true;
+    }
+  }
+
   const { error } = await serviceClient.from("product_images").insert({
     product_id: productId,
     image_url: urlData.publicUrl,
-    is_primary: formData.get("is_primary") === "true",
+    is_primary: setPrimary,
+    alt_text: safeName,
   });
 
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/products");
+  revalidatePath("/admin/product-photos");
+  revalidatePath("/products");
+  revalidatePath("/");
+
   return { success: true };
+}
+
+export async function uploadProductImageByBarcode(
+  barcode: string,
+  formData: FormData
+): Promise<ActionResult<{ uploaded: number; productName: string }>> {
+  const code = barcode.trim().replace(/\s/g, "");
+  if (!code) return { success: false, error: "Enter a BCN number" };
+
+  const product = await getProductByBarcode(code);
+  if (!product) {
+    return { success: false, error: `No product found for BCN ${code}` };
+  }
+
+  const files = [
+    ...formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0),
+    ...formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0),
+  ];
+
+  if (files.length === 0) {
+    return { success: false, error: "Select at least one photo" };
+  }
+
+  const setPrimary = formData.get("is_primary") === "true";
+  let uploaded = 0;
+  let lastError = "";
+
+  for (let i = 0; i < files.length; i++) {
+    const makePrimary = setPrimary && i === 0;
+    const result = await saveProductImage(product.id, files[i], makePrimary);
+    if (result.success) {
+      uploaded++;
+    } else {
+      lastError = result.error || "Upload failed";
+    }
+  }
+
+  if (uploaded === 0) {
+    return { success: false, error: lastError || "Failed to upload photos" };
+  }
+
+  return {
+    success: true,
+    data: { uploaded, productName: product.name },
+  };
 }
 
 export async function getAllProductsAdmin(): Promise<Product[]> {
