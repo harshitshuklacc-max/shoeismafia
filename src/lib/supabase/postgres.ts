@@ -37,3 +37,20 @@ export async function dbQueryOne<T = Record<string, unknown>>(
   const rows = await dbQuery<T>(text, params);
   return rows[0] || null;
 }
+
+export async function dbTransaction<T>(
+  fn: (query: (text: string, params?: unknown[]) => Promise<pg.QueryResult>) => Promise<T>
+): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn((text, params) => client.query(text, params));
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}

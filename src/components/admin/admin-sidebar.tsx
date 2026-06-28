@@ -14,6 +14,7 @@ import {
   Upload,
   RefreshCw,
   LogOut,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { adminLogout } from "@/actions/admin-auth";
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/admin/inventory", label: "Inventory", icon: BarChart3 },
   { href: "/admin/restock", label: "Restock", icon: RefreshCw },
   { href: "/admin/import", label: "BUSY Import", icon: Upload },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 interface AdminSidebarProps {
