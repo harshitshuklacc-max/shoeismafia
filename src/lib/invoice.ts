@@ -1,6 +1,12 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { PosSaleItem } from "@/types";
+import {
+  STORE_ADDRESS,
+  STORE_BILL_FOOTER,
+  STORE_NAME,
+  STORE_TAGLINE,
+} from "@/lib/store-info";
 
 interface InvoiceData {
   invoiceNumber: string;
@@ -19,21 +25,26 @@ function buildInvoiceDoc(data: InvoiceData): jsPDF {
 
   doc.setFontSize(20);
   doc.setTextColor(40, 116, 240);
-  doc.text("SHOE MAFIA", pageWidth / 2, 20, { align: "center" });
+  doc.text(STORE_NAME, pageWidth / 2, 20, { align: "center" });
 
   doc.setFontSize(10);
   doc.setTextColor(100);
-  doc.text("Premium Footwear Store", pageWidth / 2, 27, { align: "center" });
+  doc.text(STORE_TAGLINE, pageWidth / 2, 27, { align: "center" });
+
+  doc.setFontSize(9);
+  doc.text(STORE_ADDRESS, pageWidth / 2, 34, { align: "center", maxWidth: pageWidth - 28 });
 
   doc.setFontSize(12);
   doc.setTextColor(0);
-  doc.text(`Invoice: ${data.invoiceNumber}`, 14, 40);
-  doc.text(`Date: ${new Date().toLocaleDateString("en-IN")}`, 14, 47);
-  doc.text(`Type: ${data.type.toUpperCase()}`, 14, 54);
-  doc.text(`Payment: ${data.paymentMethod}`, 14, 61);
+  doc.text(`Invoice: ${data.invoiceNumber}`, 14, 48);
+  doc.text(`Date: ${new Date().toLocaleDateString("en-IN")}`, 14, 55);
+  doc.text(`Type: ${data.type.toUpperCase()}`, 14, 62);
+  doc.text(`Payment: ${data.paymentMethod}`, 14, 69);
 
+  let tableStartY = 76;
   if (data.customerName) {
-    doc.text(`Customer: ${data.customerName}`, 14, 68);
+    doc.text(`Customer: ${data.customerName}`, 14, 76);
+    tableStartY = 83;
   }
 
   const tableData = data.items.map((item) => {
@@ -42,7 +53,7 @@ function buildInvoiceDoc(data: InvoiceData): jsPDF {
   });
 
   autoTable(doc, {
-    startY: data.customerName ? 75 : 68,
+    startY: tableStartY,
     head: [["Product", "Qty", "Price", "Total"]],
     body: tableData,
     theme: "striped",
@@ -67,10 +78,10 @@ function buildInvoiceDoc(data: InvoiceData): jsPDF {
     { align: "right" }
   );
 
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(100);
-  doc.text("Thank you for shopping at Shoe Mafia!", pageWidth / 2, finalY + 30, { align: "center" });
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text(STORE_BILL_FOOTER, pageWidth / 2, finalY + 32, { align: "center" });
 
   return doc;
 }

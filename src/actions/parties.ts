@@ -26,7 +26,7 @@ export async function createParty(name: string, phone?: string): Promise<ActionR
       [trimmed, phone?.trim() || null]
     );
     revalidatePath("/admin/restock");
-    revalidatePath("/admin/settings");
+    revalidatePath("/admin/products/new");
     return { success: true, data: row! };
   } catch (error) {
     return {

@@ -15,13 +15,15 @@ import {
 } from "@/components/ui/select";
 import { BarcodePreview } from "@/components/admin/barcode-preview";
 import { createProductsBulk, generateNextBcnRange } from "@/actions/products";
+import { createParty } from "@/actions/parties";
 import { downloadBarcodePng, downloadBarcodesPdf } from "@/lib/barcode-label";
 import { toast } from "sonner";
 import { Download, Plus, Trash2 } from "lucide-react";
-import type { Category, CreatedProductBarcode } from "@/types";
+import type { Category, CreatedProductBarcode, Party } from "@/types";
 
 interface ProductFormProps {
   categories: Category[];
+  parties: Party[];
 }
 
 interface ProductRow {
@@ -48,12 +50,15 @@ function emptyRow(previewBcn = ""): ProductRow {
   };
 }
 
-export function ProductForm({ categories }: ProductFormProps) {
+export function ProductForm({ categories, parties: initialParties }: ProductFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [gstRate, setGstRate] = useState("18");
   const [hsnCode, setHsnCode] = useState("");
+  const [partyName, setPartyName] = useState("");
+  const [newPartyName, setNewPartyName] = useState("");
+  const [parties, setParties] = useState(initialParties);
   const [rows, setRows] = useState<ProductRow[]>([emptyRow()]);
   const [createdProducts, setCreatedProducts] = useState<CreatedProductBarcode[]>([]);
 
@@ -89,6 +94,23 @@ export function ProductForm({ categories }: ProductFormProps) {
   const removeRow = (key: string) => {
     if (rows.length === 1) return;
     setRows((prev) => prev.filter((row) => row.key !== key));
+  };
+
+  const handleAddParty = async () => {
+    if (!newPartyName.trim()) {
+      toast.error("Enter party name");
+      return;
+    }
+    const result = await createParty(newPartyName);
+    if (result.success && result.data) {
+      setParties((prev) => [...prev, result.data!].sort((a, b) => a.name.localeCompare(b.name)));
+      setPartyName(result.data.name);
+      setNewPartyName("");
+      toast.success("Party added");
+      router.refresh();
+    } else {
+      toast.error(result.error || "Failed to add party");
+    }
   };
 
   const handleDownloadRow = (row: ProductRow) => {
@@ -136,7 +158,8 @@ export function ProductForm({ categories }: ProductFormProps) {
         gst_rate: parseFloat(gstRate) || 18,
         hsn_code: hsnCode.trim() || undefined,
         barcode: row.previewBcn,
-      }))
+      })),
+      partyName || undefined
     );
     setLoading(false);
 
@@ -207,7 +230,7 @@ export function ProductForm({ categories }: ProductFormProps) {
         <CardHeader>
           <CardTitle>Shared Settings</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Category</Label>
             <Select value={categoryId || undefined} onValueChange={setCategoryId}>
@@ -222,6 +245,31 @@ export function ProductForm({ categories }: ProductFormProps) {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label>Received From (Party)</Label>
+            <Select value={partyName || undefined} onValueChange={setPartyName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select supplier / party" />
+              </SelectTrigger>
+              <SelectContent>
+                {parties.map((party) => (
+                  <SelectItem key={party.id} value={party.name}>
+                    {party.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={newPartyName}
+                onChange={(e) => setNewPartyName(e.target.value)}
+                placeholder="Add new party name"
+              />
+              <Button type="button" variant="outline" onClick={handleAddParty}>
+                Add
+              </Button>
+            </div>
           </div>
           <div>
             <Label htmlFor="gst_rate">GST Rate (%)</Label>

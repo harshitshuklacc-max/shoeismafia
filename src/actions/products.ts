@@ -159,7 +159,8 @@ export async function generateNextBcnRange(count: number): Promise<string[]> {
 }
 
 export async function createProductsBulk(
-  items: BulkProductInput[]
+  items: BulkProductInput[],
+  partyName?: string
 ): Promise<ActionResult<{ products: CreatedProductBarcode[] }>> {
   const valid = items.filter((item) => item.name?.trim());
   if (valid.length === 0) {
@@ -177,6 +178,7 @@ export async function createProductsBulk(
       );
       let nextBcn = parseInt(String(maxRow.rows[0]?.max || "799999"), 10) + 1;
       const created: CreatedProductBarcode[] = [];
+      const party = partyName?.trim() || null;
 
       for (const item of valid) {
         let barcode = item.barcode?.trim().replace(/\s/g, "") || "";
@@ -223,12 +225,41 @@ export async function createProductsBulk(
           [barcode, product.id]
         );
 
+        const logNotes = party
+          ? quantity > 0
+            ? `Initial stock from ${party}`
+            : `New product from ${party}`
+          : quantity > 0
+            ? "Initial stock"
+            : "New product";
+
         await query(
           `INSERT INTO inventory_logs (
              product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes
-           ) VALUES ($1, $2, 'import', $3, 0, $3, 'Initial stock')`,
-          [product.id, barcode, quantity]
+           ) VALUES ($1, $2, 'import', $3, 0, $3, $4)`,
+          [product.id, barcode, quantity, logNotes]
         );
+
+        if (quantity > 0) {
+          await query(
+            `INSERT INTO restock_logs (
+               product_id, barcode, quantity_added, quantity_before, quantity_after, notes, party_name
+             ) VALUES ($1, $2, $3, 0, $3, $4, $5)`,
+            [
+              product.id,
+              barcode,
+              quantity,
+              party ? `Initial stock from ${party}` : "Initial stock",
+              party,
+            ]
+          );
+
+          await query(
+            `INSERT INTO stock_history (product_id, barcode, quantity, cost_price, selling_price, action)
+             VALUES ($1, $2, $3, $4, $5, 'import')`,
+            [product.id, barcode, quantity, costPrice, sellingPrice]
+          );
+        }
 
         created.push(product);
       }
@@ -237,6 +268,8 @@ export async function createProductsBulk(
     });
 
     revalidatePath("/admin/products");
+    revalidatePath("/admin/inventory");
+    revalidatePath("/admin/restock");
     revalidateCatalog();
     return { success: true, data: { products } };
   } catch (error) {
@@ -289,6 +322,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult<Pr
   const quantity = parseInt(formData.get("quantity") as string) || 0;
   const gst_rate = parseFloat(formData.get("gst_rate") as string) || 18;
   const hsn_code = formData.get("hsn_code") as string;
+  const partyName = (formData.get("party_name") as string)?.trim() || null;
 
   const { data, error } = await serviceClient
     .from("products")
@@ -316,6 +350,14 @@ export async function createProduct(formData: FormData): Promise<ActionResult<Pr
     product_id: data.id,
   });
 
+  const logNotes = partyName
+    ? quantity > 0
+      ? `Initial stock from ${partyName}`
+      : `New product from ${partyName}`
+    : quantity > 0
+      ? "Initial stock"
+      : "New product";
+
   await serviceClient.from("inventory_logs").insert({
     product_id: data.id,
     barcode,
@@ -323,8 +365,29 @@ export async function createProduct(formData: FormData): Promise<ActionResult<Pr
     quantity_change: quantity,
     quantity_before: 0,
     quantity_after: quantity,
-    notes: "Initial stock",
+    notes: logNotes,
   });
+
+  if (quantity > 0) {
+    await dbQuery(
+      `INSERT INTO restock_logs (
+         product_id, barcode, quantity_added, quantity_before, quantity_after, notes, party_name
+       ) VALUES ($1, $2, $3, 0, $3, $4, $5)`,
+      [
+        data.id,
+        barcode,
+        quantity,
+        partyName ? `Initial stock from ${partyName}` : "Initial stock",
+        partyName,
+      ]
+    );
+
+    await dbQuery(
+      `INSERT INTO stock_history (product_id, barcode, quantity, cost_price, selling_price, action)
+       VALUES ($1, $2, $3, $4, $5, 'import')`,
+      [data.id, barcode, quantity, cost_price, selling_price]
+    );
+  }
 
   const imageFile = formData.get("image") as File | null;
   if (imageFile && imageFile.size > 0) {
@@ -335,6 +398,8 @@ export async function createProduct(formData: FormData): Promise<ActionResult<Pr
   }
 
   revalidatePath("/admin/products");
+  revalidatePath("/admin/inventory");
+  revalidatePath("/admin/restock");
   revalidateCatalog();
   return { success: true, data: { ...(data as Product), barcode } };
 }

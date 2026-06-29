@@ -1,4 +1,10 @@
 import type { PosSaleItem } from "@/types";
+import {
+  STORE_ADDRESS,
+  STORE_BILL_FOOTER,
+  STORE_NAME,
+  STORE_TAGLINE,
+} from "@/lib/store-info";
 
 export interface PosReceiptData {
   invoiceNumber: string;
@@ -44,6 +50,13 @@ function buildReceiptHtml(data: PosReceiptData): string {
     .center { text-align: center; }
     .title { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
     .sub { font-size: 10px; color: #444; margin-top: 2px; }
+    .address {
+      font-size: 9px;
+      color: #444;
+      margin-top: 6px;
+      line-height: 1.4;
+      padding: 0 4px;
+    }
     .meta { margin: 10px 0; font-size: 11px; }
     .meta div { margin-bottom: 3px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
@@ -56,7 +69,7 @@ function buildReceiptHtml(data: PosReceiptData): string {
     .totals { margin-top: 10px; border-top: 1px dashed #999; padding-top: 8px; }
     .totals div { display: flex; justify-content: space-between; margin-bottom: 4px; }
     .grand { font-size: 14px; font-weight: 700; margin-top: 4px; }
-    .thanks { margin-top: 12px; text-align: center; font-size: 10px; color: #555; }
+    .footer { margin-top: 14px; text-align: center; font-size: 11px; font-weight: 600; color: #222; }
     @media print {
       @page { margin: 4mm; size: 80mm auto; }
       body { width: auto; }
@@ -65,8 +78,9 @@ function buildReceiptHtml(data: PosReceiptData): string {
 </head>
 <body>
   <div class="center">
-    <div class="title">SHOE MAFIA</div>
-    <div class="sub">Premium Footwear Store</div>
+    <div class="title">${STORE_NAME}</div>
+    <div class="sub">${STORE_TAGLINE}</div>
+    <div class="address">${STORE_ADDRESS}</div>
   </div>
   <div class="meta">
     <div><strong>Bill:</strong> ${data.invoiceNumber}</div>
@@ -88,7 +102,7 @@ function buildReceiptHtml(data: PosReceiptData): string {
     <div><span>Subtotal</span><span>Rs. ${formatMoney(data.subtotal)}</span></div>
     <div class="grand"><span>Total</span><span>Rs. ${formatMoney(data.total)}</span></div>
   </div>
-  <div class="thanks">Thank you for shopping at Shoe Mafia!</div>
+  <div class="footer">${STORE_BILL_FOOTER}</div>
   <script>
     window.onload = function() {
       window.focus();
