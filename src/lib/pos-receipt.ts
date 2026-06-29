@@ -6,6 +6,7 @@ export interface PosReceiptData {
   subtotal: number;
   total: number;
   paymentMethod: string;
+  salesmanName?: string;
 }
 
 function formatMoney(amount: number): string {
@@ -71,6 +72,7 @@ function buildReceiptHtml(data: PosReceiptData): string {
     <div><strong>Bill:</strong> ${data.invoiceNumber}</div>
     <div><strong>Date:</strong> ${date}</div>
     <div><strong>Payment:</strong> ${data.paymentMethod}</div>
+    ${data.salesmanName ? `<div><strong>Salesman:</strong> ${data.salesmanName}</div>` : ""}
   </div>
   <table>
     <thead>

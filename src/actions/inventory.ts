@@ -4,7 +4,7 @@ import { createServiceClient, createServiceClientSafe } from "@/lib/supabase/adm
 import { dbQuery, dbQueryOne } from "@/lib/supabase/postgres";
 import { revalidatePath } from "next/cache";
 import { slugify } from "@/lib/utils";
-import type { ActionResult, BusyImportRow } from "@/types";
+import type { ActionResult, BusyImportRow, LatestStockByParty } from "@/types";
 
 async function resolveCategoryId(typeName: string): Promise<string | null> {
   if (!typeName.trim()) return null;
@@ -26,7 +26,8 @@ async function resolveCategoryId(typeName: string): Promise<string | null> {
 export async function restockProduct(
   barcode: string,
   quantity: number,
-  notes?: string
+  notes?: string,
+  partyName?: string
 ): Promise<ActionResult> {
   if (quantity <= 0) {
     return { success: false, error: "Quantity must be greater than 0" };
@@ -55,22 +56,27 @@ export async function restockProduct(
     );
 
     await dbQuery(
-      `INSERT INTO restock_logs (product_id, barcode, quantity_added, quantity_before, quantity_after, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [product.id, barcode, quantity, quantityBefore, quantityAfter, notes || null]
-    );
-
-    await dbQuery(
-      `INSERT INTO inventory_logs (product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes)
-       VALUES ($1, $2, 'restock', $3, $4, $5, $6)`,
+      `INSERT INTO restock_logs (product_id, barcode, quantity_added, quantity_before, quantity_after, notes, party_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         product.id,
         barcode,
         quantity,
         quantityBefore,
         quantityAfter,
-        notes || "Manual restock",
+        notes || null,
+        partyName?.trim() || null,
       ]
+    );
+
+    const logNotes = partyName?.trim()
+      ? `Restock from ${partyName.trim()}${notes ? `: ${notes}` : ""}`
+      : notes || "Manual restock";
+
+    await dbQuery(
+      `INSERT INTO inventory_logs (product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes)
+       VALUES ($1, $2, 'restock', $3, $4, $5, $6)`,
+      [product.id, barcode, quantity, quantityBefore, quantityAfter, logNotes]
     );
 
     await dbQuery(
@@ -126,14 +132,79 @@ export async function getStockHistory(productId?: string) {
 }
 
 export async function getRestockLogs() {
-  const serviceClient = createServiceClient();
-  const { data } = await serviceClient
-    .from("restock_logs")
-    .select("*, product:products(name, barcode)")
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const rows = await dbQuery<{
+    id: string;
+    product_id: string;
+    barcode: string;
+    quantity_added: number;
+    quantity_before: number;
+    quantity_after: number;
+    notes: string | null;
+    party_name: string | null;
+    created_at: string;
+    product_name: string | null;
+  }>(
+    `SELECT rl.*, p.name AS product_name
+     FROM restock_logs rl
+     LEFT JOIN products p ON p.id = rl.product_id
+     ORDER BY rl.created_at DESC
+     LIMIT 50`
+  );
 
-  return data || [];
+  return rows.map((row) => ({
+    ...row,
+    product: row.product_name ? { name: row.product_name, barcode: row.barcode } : undefined,
+  }));
+}
+
+export async function getLatestStockByParty(limit = 30): Promise<LatestStockByParty[]> {
+  const rows = await dbQuery<{
+    id: string;
+    party_name: string | null;
+    product_name: string | null;
+    barcode: string;
+    quantity_added: number;
+    created_at: string;
+  }>(
+    `SELECT rl.id, rl.party_name, p.name AS product_name, rl.barcode, rl.quantity_added, rl.created_at
+     FROM restock_logs rl
+     LEFT JOIN products p ON p.id = rl.product_id
+     ORDER BY rl.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  const grouped = new Map<string, LatestStockByParty>();
+
+  for (const row of rows) {
+    const partyName = row.party_name?.trim() || "Unknown Party";
+    const entry = {
+      id: row.id,
+      party_name: partyName,
+      product_name: row.product_name || "Unknown product",
+      barcode: row.barcode,
+      quantity_added: row.quantity_added,
+      created_at: row.created_at,
+    };
+
+    const existing = grouped.get(partyName);
+    if (existing) {
+      existing.items.push(entry);
+      if (row.created_at > existing.last_received_at) {
+        existing.last_received_at = row.created_at;
+      }
+    } else {
+      grouped.set(partyName, {
+        party_name: partyName,
+        items: [entry],
+        last_received_at: row.created_at,
+      });
+    }
+  }
+
+  return Array.from(grouped.values()).sort(
+    (a, b) => new Date(b.last_received_at).getTime() - new Date(a.last_received_at).getTime()
+  );
 }
 
 export async function getLowStockProducts(threshold = 5) {

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LatestStockSection } from "@/components/admin/latest-stock-section";
 
 export default async function InventoryPage() {
   const isAdmin = await verifyAdminSession();
@@ -33,6 +34,10 @@ export default async function InventoryPage() {
           </div>
         </div>
       )}
+
+      <div className="mb-8">
+        <LatestStockSection />
+      </div>
 
       <Tabs defaultValue="logs">
         <TabsList>
@@ -87,6 +92,7 @@ export default async function InventoryPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
+                  <th className="text-left p-3">Party</th>
                   <th className="text-left p-3">Product</th>
                   <th className="text-left p-3">Barcode</th>
                   <th className="text-right p-3">Added</th>
@@ -97,12 +103,15 @@ export default async function InventoryPage() {
               <tbody>
                 {restockLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">No restock logs yet</td>
+                    <td colSpan={7} className="p-8 text-center text-gray-500">No restock logs yet</td>
                   </tr>
                 ) : (
                   restockLogs.map((log) => (
                     <tr key={log.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 text-xs">{formatDateTime(log.created_at)}</td>
+                      <td className="p-3">
+                        <Badge variant="outline">{log.party_name || "—"}</Badge>
+                      </td>
                       <td className="p-3">{(log.product as { name: string })?.name || "-"}</td>
                       <td className="p-3 font-mono text-xs">{log.barcode}</td>
                       <td className="p-3 text-right text-green-600 font-medium">+{log.quantity_added}</td>

@@ -11,7 +11,10 @@ export default async function NewProductPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Add New Product</h1>
+      <h1 className="text-2xl font-bold mb-2">Add Products</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Add one or many products at once. BCN barcodes are auto-generated and downloadable instantly.
+      </p>
       <ProductForm categories={categories} />
     </div>
   );

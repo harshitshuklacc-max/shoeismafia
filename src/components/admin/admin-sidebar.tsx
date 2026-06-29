@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Camera,
+  Filter,
   LayoutDashboard,
   Package,
   ShoppingBag,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/products", label: "Products", icon: Package },
+  { href: "/admin/filter", label: "Filter", icon: Filter },
   { href: "/admin/product-photos", label: "Product Photos", icon: Camera },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { href: "/admin/pos", label: "POS", icon: Monitor },

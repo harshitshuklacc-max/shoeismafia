@@ -11,7 +11,9 @@ function getPool(): pg.Pool {
       user: process.env.DB_USER || "postgres.fsvamqiyukmkltjxabrg",
       password: process.env.DB_PASSWORD,
       ssl: { rejectUnauthorized: false },
-      max: 5,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
     });
   }
   return pool;

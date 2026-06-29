@@ -49,8 +49,8 @@ export function DashboardCharts({
               <XAxis dataKey="date" fontSize={12} />
               <YAxis fontSize={12} tickFormatter={(v) => `₹${v}`} />
               <Tooltip formatter={(value: number) => formatCurrency(value)} />
-              <Line type="monotone" dataKey="online" stroke="#2874f0" name="Online" />
-              <Line type="monotone" dataKey="pos" stroke="#ffe500" name="POS" />
+              <Line type="monotone" dataKey="online" stroke="#2874f0" name="Online" isAnimationActive={false} />
+              <Line type="monotone" dataKey="pos" stroke="#ffe500" name="POS" isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
@@ -73,6 +73,7 @@ export function DashboardCharts({
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
+                  isAnimationActive={false}
                   label={({ status, count }) => `${status}: ${count}`}
                 >
                   {orderBreakdown.map((_, index) => (
@@ -98,7 +99,7 @@ export function DashboardCharts({
                 <XAxis dataKey="name" fontSize={11} angle={-15} textAnchor="end" height={60} />
                 <YAxis fontSize={12} tickFormatter={(v) => `₹${v}`} />
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                <Bar dataKey="revenue" fill="#2874f0" name="Revenue" />
+                <Bar dataKey="revenue" fill="#2874f0" name="Revenue" isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

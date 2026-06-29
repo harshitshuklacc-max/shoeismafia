@@ -59,6 +59,20 @@ const DEFAULT_BCN_BOUNDARIES: BcnColumnBoundary[] = [
   { key: "cl_qty", maxX: Infinity },
 ];
 
+/** BCN wise Closing Stock Detailed (new BUSY export) */
+const DEFAULT_CLOSING_BCN_BOUNDARIES: BcnColumnBoundary[] = [
+  { key: "item_details", maxX: 65 },
+  { key: "bcn", maxX: 153 },
+  { key: "art_no", maxX: 225 },
+  { key: "size", maxX: 294 },
+  { key: "colour", maxX: 384 },
+  { key: "sales_price", maxX: 488 },
+  { key: "op_qty", maxX: 556 },
+  { key: "qty_in", maxX: 608 },
+  { key: "qty_out", maxX: 662 },
+  { key: "cl_qty", maxX: Infinity },
+];
+
 function parseNumber(value: string | undefined, fallback = 0): number {
   if (!value) return fallback;
   const cleaned = value
@@ -137,12 +151,20 @@ export function buildBusyProductName(
 }
 
 function isBcnWiseReport(text: string): boolean {
-  return /bcn\s*wise\s*stock/i.test(text);
+  return /bcn\s*wise\s*(stock|closing\s*stock)/i.test(text);
+}
+
+function isClosingStockReport(text: string): boolean {
+  return /bcn\s*wise\s*closing\s*stock/i.test(text);
 }
 
 function isBcnHeaderLine(text: string): boolean {
   const lower = text.toLowerCase();
-  return lower.includes("bcn") && lower.includes("item details") && lower.includes("cl. qty");
+  return (
+    lower.includes("bcn") &&
+    lower.includes("item details") &&
+    (/cl\.?\s*qty/.test(lower) || /sp\s*unit/.test(lower))
+  );
 }
 
 function isBcnSkipLine(text: string): boolean {
@@ -152,6 +174,7 @@ function isBcnSkipLine(text: string): boolean {
   const skipPatterns = [
     /^shoe mafia/i,
     /^bcn wise stock/i,
+    /^bcn wise closing stock/i,
     /^from \d/i,
     /^all items/i,
     /^mc\s*:/i,
@@ -166,10 +189,12 @@ function isBcnSkipLine(text: string): boolean {
   return skipPatterns.some((p) => p.test(lower));
 }
 
-function detectBcnBoundaries(headerItems: TextItem[]): BcnColumnBoundary[] {
+function detectBcnBoundaries(headerItems: TextItem[], closingStock = false): BcnColumnBoundary[] {
   const items = headerItems.filter((i) => i.str.trim()).sort((a, b) => a.x - b.x);
   const text = items.map((i) => i.str.toLowerCase()).join(" ");
-  if (!text.includes("bcn")) return DEFAULT_BCN_BOUNDARIES;
+  if (!text.includes("bcn")) {
+    return closingStock ? DEFAULT_CLOSING_BCN_BOUNDARIES : DEFAULT_BCN_BOUNDARIES;
+  }
 
   const findX = (patterns: RegExp[], fallback: number): number => {
     for (const item of items) {
@@ -179,30 +204,35 @@ function detectBcnBoundaries(headerItems: TextItem[]): BcnColumnBoundary[] {
     return fallback;
   };
 
+  const defaults = closingStock ? DEFAULT_CLOSING_BCN_BOUNDARIES : DEFAULT_BCN_BOUNDARIES;
   const itemDetails = items[0]?.x ?? 1;
-  const bcn = findX([/^bcn$/i], 86);
-  const artNo = findX([/art\s*no/i, /p1/i], 156);
-  const salesPrice = findX([/sales\s*price/i], 336);
-  const opQty = findX([/op\.?\s*qty/i], 432);
-  const qtyIn = findX([/qty\.?\s*in/i], 483);
-  const qtyOut = findX([/qty\.?\s*out/i], 520);
-  const clQty = findX([/cl\.?\s*qty/i], 568);
+  const bcn = findX([/^bcn$/i], closingStock ? 123 : 86);
+  const artNo = findX([/art\s*no/i, /p1/i], closingStock ? 183 : 156);
+  const size = findX([/^size$/i, /siz/i, /p2/i], closingStock ? 267 : 218);
+  const colour = findX([/colour/i, /color/i, /p3/i], closingStock ? 320 : 272);
+  const salesPrice = findX([/sp\s*unit/i, /sales\s*price/i], closingStock ? 447 : 336);
+  const opQty = findX([/op\.?\s*qty/i], closingStock ? 528 : 432);
+  const qtyIn = findX([/qty\.?\s*in/i], closingStock ? 583 : 483);
+  const qtyOut = findX([/qty\.?\s*out/i], closingStock ? 632 : 520);
+  const clQty = findX([/cl\.?\s*qty/i], closingStock ? 691 : 568);
 
   const midpoint = (a: number, b: number) => Math.round((a + b) / 2);
-  const sizeSplit = 245;
 
   return [
     { key: "item_details", maxX: midpoint(itemDetails, bcn) },
     { key: "bcn", maxX: midpoint(bcn, artNo) },
-    { key: "art_no", maxX: midpoint(artNo, sizeSplit) },
-    { key: "size", maxX: sizeSplit },
-    { key: "colour", maxX: midpoint(sizeSplit + 19, salesPrice) },
+    { key: "art_no", maxX: midpoint(artNo, size) },
+    { key: "size", maxX: midpoint(size, colour) },
+    { key: "colour", maxX: midpoint(colour, salesPrice) },
     { key: "sales_price", maxX: midpoint(salesPrice, opQty) },
     { key: "op_qty", maxX: midpoint(opQty, qtyIn) },
     { key: "qty_in", maxX: midpoint(qtyIn, qtyOut) },
     { key: "qty_out", maxX: midpoint(qtyOut, clQty) },
     { key: "cl_qty", maxX: Infinity },
-  ];
+  ].map((col, idx) => ({
+    key: col.key,
+    maxX: col.maxX === Infinity ? Infinity : col.maxX || defaults[idx].maxX,
+  }));
 }
 
 function assignBcnColumn(x: number, boundaries: BcnColumnBoundary[]): string {
@@ -305,9 +335,10 @@ function groupItemsIntoLines(items: TextItem[]): { y: number; items: TextItem[] 
 }
 
 async function parseBcnWisePdf(
-  pdf: { numPages: number; getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }> }
+  pdf: { numPages: number; getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }> },
+  closingStock = false
 ): Promise<BusyImportRow[]> {
-  let boundaries = DEFAULT_BCN_BOUNDARIES;
+  let boundaries = closingStock ? DEFAULT_CLOSING_BCN_BOUNDARIES : DEFAULT_BCN_BOUNDARIES;
   const allLines: { y: number; items: TextItem[]; page: number }[] = [];
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -325,7 +356,7 @@ async function parseBcnWisePdf(
         isBcnHeaderLine(line.items.map((i) => i.str).join(" "))
       );
       if (headerLine) {
-        boundaries = detectBcnBoundaries(headerLine.items);
+        boundaries = detectBcnBoundaries(headerLine.items, closingStock);
       }
     }
 
@@ -588,7 +619,7 @@ export async function parseBusyPdf(file: File): Promise<BusyImportRow[]> {
     .join(" ");
 
   if (isBcnWiseReport(probeText)) {
-    return parseBcnWisePdf(pdf);
+    return parseBcnWisePdf(pdf, isClosingStockReport(probeText));
   }
 
   const allLines: ParsedLine[] = [];

@@ -7,6 +7,8 @@ import { ProductPagination } from "@/components/products/product-pagination";
 
 const PRODUCTS_PER_PAGE = 20;
 
+export const revalidate = 60;
+
 interface ProductsPageProps {
   searchParams: Promise<{
     search?: string;
@@ -23,6 +25,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const categorySlug = params.category;
 
   const categories = await getCategories();
+
   const categoryId = categorySlug
     ? categories.find((c) => c.slug === categorySlug)?.id
     : undefined;

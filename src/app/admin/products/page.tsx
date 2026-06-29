@@ -23,7 +23,7 @@ export default async function AdminProductsPage() {
           <Link href="/admin/products/new">
             <Button variant="flipkart">
               <Plus className="h-4 w-4 mr-1" />
-              Add Product
+              Add Products
             </Button>
           </Link>
         </div>

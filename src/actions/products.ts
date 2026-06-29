@@ -2,9 +2,25 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { dbQuery, dbQueryOne } from "@/lib/supabase/postgres";
-import { revalidatePath } from "next/cache";
-import type { ActionResult, Product, Banner, Category } from "@/types";
+import { dbQuery, dbQueryOne, dbTransaction } from "@/lib/supabase/postgres";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+import type {
+  ActionResult,
+  Product,
+  Banner,
+  Category,
+  ProductAvailability,
+  BulkProductInput,
+  CreatedProductBarcode,
+} from "@/types";
+import { slugify } from "@/lib/utils";
+
+function revalidateCatalog() {
+  revalidatePath("/products");
+  revalidatePath("/");
+  revalidateTag("categories");
+  revalidateTag("banners");
+}
 
 export async function getProducts(options?: {
   search?: string;
@@ -41,26 +57,34 @@ export async function getProducts(options?: {
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const countRows = await dbQuery<{ count: string }>(
-    `SELECT COUNT(*) as count FROM products p ${where}`,
-    params
-  );
-  const total = parseInt(countRows[0]?.count || "0");
+  const listImageSql = `COALESCE(
+    (SELECT json_agg(json_build_object('id', pi.id, 'image_url', pi.image_url, 'is_primary', pi.is_primary))
+     FROM (
+       SELECT id, image_url, is_primary
+       FROM product_images
+       WHERE product_id = p.id
+       ORDER BY is_primary DESC, created_at ASC
+       LIMIT 1
+     ) pi),
+    '[]'::json
+  ) AS product_images`;
 
-  const products = await dbQuery<Product>(
-    `SELECT p.*, 
-      json_build_object('id', c.id, 'name', c.name, 'slug', c.slug) as category,
-      COALESCE(
-        (SELECT json_agg(json_build_object('id', pi.id, 'image_url', pi.image_url, 'is_primary', pi.is_primary))
-         FROM product_images pi WHERE pi.product_id = p.id), '[]'
-      ) as product_images
-     FROM products p
-     LEFT JOIN categories c ON c.id = p.category_id
-     ${where}
-     ORDER BY ${orderBy}
-     LIMIT $${i} OFFSET $${i + 1}`,
-    [...params, limit, offset]
-  );
+  const [countRows, products] = await Promise.all([
+    dbQuery<{ count: string }>(`SELECT COUNT(*) AS count FROM products p ${where}`, params),
+    dbQuery<Product>(
+      `SELECT p.*,
+        json_build_object('id', c.id, 'name', c.name, 'slug', c.slug) AS category,
+        ${listImageSql}
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       ${where}
+       ORDER BY ${orderBy}
+       LIMIT $${i} OFFSET $${i + 1}`,
+      [...params, limit, offset]
+    ),
+  ]);
+
+  const total = parseInt(countRows[0]?.count || "0");
 
   return { products, total };
 }
@@ -98,19 +122,164 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
 }
 
 export async function getCategories(): Promise<Category[]> {
-  return dbQuery<Category>("SELECT * FROM categories WHERE is_active = true ORDER BY sort_order");
+  return unstable_cache(
+    () =>
+      dbQuery<Category>(
+        "SELECT * FROM categories WHERE is_active = true ORDER BY sort_order"
+      ),
+    ["shop-categories"],
+    { revalidate: 300, tags: ["categories"] }
+  )();
 }
 
 export async function getBanners(): Promise<Banner[]> {
-  return dbQuery<Banner>("SELECT * FROM banners WHERE is_active = true ORDER BY sort_order");
+  return unstable_cache(
+    () =>
+      dbQuery<Banner>(
+        "SELECT * FROM banners WHERE is_active = true ORDER BY sort_order"
+      ),
+    ["shop-banners"],
+    { revalidate: 300, tags: ["banners"] }
+  )();
+}
+
+export async function generateNextBcn(): Promise<string> {
+  const range = await generateNextBcnRange(1);
+  return range[0] || "800000";
+}
+
+export async function generateNextBcnRange(count: number): Promise<string[]> {
+  const safeCount = Math.min(Math.max(count, 1), 50);
+  const row = await dbQueryOne<{ max: string }>(
+    `SELECT COALESCE(MAX(CAST(barcode AS BIGINT)), 799999)::text AS max
+     FROM products WHERE barcode ~ '^[0-9]+$'`
+  );
+  const start = parseInt(row?.max || "799999", 10) + 1;
+  return Array.from({ length: safeCount }, (_, i) => String(start + i));
+}
+
+export async function createProductsBulk(
+  items: BulkProductInput[]
+): Promise<ActionResult<{ products: CreatedProductBarcode[] }>> {
+  const valid = items.filter((item) => item.name?.trim());
+  if (valid.length === 0) {
+    return { success: false, error: "Add at least one product with a name" };
+  }
+  if (valid.length > 50) {
+    return { success: false, error: "Maximum 50 products at once" };
+  }
+
+  try {
+    const products = await dbTransaction(async (query) => {
+      const maxRow = await query(
+        `SELECT COALESCE(MAX(CAST(barcode AS BIGINT)), 799999)::text AS max
+         FROM products WHERE barcode ~ '^[0-9]+$'`
+      );
+      let nextBcn = parseInt(String(maxRow.rows[0]?.max || "799999"), 10) + 1;
+      const created: CreatedProductBarcode[] = [];
+
+      for (const item of valid) {
+        let barcode = item.barcode?.trim().replace(/\s/g, "") || "";
+        if (!barcode || !/^\d+$/.test(barcode)) {
+          barcode = String(nextBcn++);
+        } else {
+          nextBcn = Math.max(nextBcn, parseInt(barcode, 10) + 1);
+        }
+
+        const name = item.name.trim();
+        const slug = `${slugify(name)}-${barcode}`;
+        const costPrice = item.cost_price ?? 0;
+        const sellingPrice = item.selling_price ?? 0;
+        const mrp = item.mrp ?? sellingPrice;
+        const quantity = item.quantity ?? 0;
+        const gstRate = item.gst_rate ?? 18;
+
+        const inserted = await query(
+          `INSERT INTO products (
+             barcode, name, slug, description, brand, category_id,
+             cost_price, selling_price, mrp, quantity, gst_rate, hsn_code
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           RETURNING id, barcode, name`,
+          [
+            barcode,
+            name,
+            slug,
+            item.description?.trim() || null,
+            item.brand?.trim() || null,
+            item.category_id || null,
+            costPrice,
+            sellingPrice,
+            mrp,
+            quantity,
+            gstRate,
+            item.hsn_code?.trim() || null,
+          ]
+        );
+
+        const product = inserted.rows[0] as CreatedProductBarcode;
+
+        await query(
+          `INSERT INTO barcode_master (barcode, product_id) VALUES ($1, $2)`,
+          [barcode, product.id]
+        );
+
+        await query(
+          `INSERT INTO inventory_logs (
+             product_id, barcode, action, quantity_change, quantity_before, quantity_after, notes
+           ) VALUES ($1, $2, 'import', $3, 0, $3, 'Initial stock')`,
+          [product.id, barcode, quantity]
+        );
+
+        created.push(product);
+      }
+
+      return created;
+    });
+
+    revalidatePath("/admin/products");
+    revalidateCatalog();
+    return { success: true, data: { products } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create products",
+    };
+  }
+}
+
+export async function searchProductsAvailability(
+  query: string
+): Promise<ProductAvailability[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  return dbQuery<ProductAvailability>(
+    `SELECT p.id, p.barcode, p.name, p.brand, p.quantity, p.selling_price, p.is_active,
+      (SELECT pi.image_url FROM product_images pi
+       WHERE pi.product_id = p.id
+       ORDER BY pi.is_primary DESC, pi.created_at ASC LIMIT 1) AS image_url
+     FROM products p
+     WHERE p.name ILIKE $1 OR p.barcode ILIKE $1 OR p.brand ILIKE $1
+     ORDER BY
+       CASE WHEN p.barcode = $2 THEN 0 WHEN p.name ILIKE $2 THEN 1 ELSE 2 END,
+       p.name ASC
+     LIMIT 50`,
+    [`%${trimmed}%`, trimmed]
+  );
 }
 
 export async function createProduct(formData: FormData): Promise<ActionResult<Product>> {
   const serviceClient = createServiceClient();
 
-  const barcode = formData.get("barcode") as string;
+  let barcode = (formData.get("barcode") as string)?.trim().replace(/\s/g, "");
+  if (!barcode) {
+    barcode = await generateNextBcn();
+  }
+
   const name = formData.get("name") as string;
-  const slug = formData.get("slug") as string || name.toLowerCase().replace(/\s+/g, "-");
+  const slug =
+    (formData.get("slug") as string) ||
+    `${name.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-")}-${barcode.slice(-4)}`;
   const description = formData.get("description") as string;
   const brand = formData.get("brand") as string;
   const category_id = formData.get("category_id") as string;
@@ -157,9 +326,17 @@ export async function createProduct(formData: FormData): Promise<ActionResult<Pr
     notes: "Initial stock",
   });
 
+  const imageFile = formData.get("image") as File | null;
+  if (imageFile && imageFile.size > 0) {
+    const imageForm = new FormData();
+    imageForm.set("file", imageFile);
+    imageForm.set("is_primary", "true");
+    await uploadProductImage(data.id, imageForm);
+  }
+
   revalidatePath("/admin/products");
-  revalidatePath("/");
-  return { success: true, data: data as Product };
+  revalidateCatalog();
+  return { success: true, data: { ...(data as Product), barcode } };
 }
 
 export async function updateProduct(id: string, formData: FormData): Promise<ActionResult> {
@@ -183,8 +360,16 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   const { error } = await serviceClient.from("products").update(updates).eq("id", id);
   if (error) return { success: false, error: error.message };
 
+  const imageFile = formData.get("image") as File | null;
+  if (imageFile && imageFile.size > 0) {
+    const imageForm = new FormData();
+    imageForm.set("file", imageFile);
+    imageForm.set("is_primary", "true");
+    await uploadProductImage(id, imageForm);
+  }
+
   revalidatePath("/admin/products");
-  revalidatePath("/");
+  revalidateCatalog();
   return { success: true };
 }
 
@@ -194,7 +379,7 @@ export async function deleteProduct(id: string): Promise<ActionResult> {
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/products");
-  revalidatePath("/");
+  revalidateCatalog();
   return { success: true };
 }
 
@@ -219,7 +404,7 @@ export async function deleteAllProducts(): Promise<ActionResult<{ deleted: numbe
 
   revalidatePath("/admin/products");
   revalidatePath("/admin/inventory");
-  revalidatePath("/");
+  revalidateCatalog();
 
   return { success: true, data: { deleted } };
 }
@@ -276,8 +461,7 @@ async function saveProductImage(
 
   revalidatePath("/admin/products");
   revalidatePath("/admin/product-photos");
-  revalidatePath("/products");
-  revalidatePath("/");
+  revalidateCatalog();
 
   return { success: true };
 }

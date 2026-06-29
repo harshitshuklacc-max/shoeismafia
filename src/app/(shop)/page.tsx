@@ -4,14 +4,16 @@ import { getProducts, getBanners, getCategories } from "@/actions/products";
 import { ProductCard } from "@/components/products/product-card";
 import { ChevronRight } from "lucide-react";
 
-export default async function HomePage() {
-  const [{ products: featuredProducts }, banners, categories] = await Promise.all([
-    getProducts({ featured: true, limit: 8 }),
-    getBanners(),
-    getCategories(),
-  ]);
+export const revalidate = 60;
 
-  const { products: latestProducts } = await getProducts({ limit: 12 });
+export default async function HomePage() {
+  const [{ products: featuredProducts }, banners, categories, { products: latestProducts }] =
+    await Promise.all([
+      getProducts({ featured: true, limit: 8 }),
+      getBanners(),
+      getCategories(),
+      getProducts({ limit: 12 }),
+    ]);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -51,7 +53,7 @@ export default async function HomePage() {
               </p>
               <Link
                 href="/products"
-                className="inline-flex items-center gap-2 bg-[#2D8664] text-white font-bold px-8 py-3 rounded-sm hover:bg-[#236b4f] transition-colors"
+                className="inline-flex items-center gap-2 bg-[#2D8664] text-white font-bold px-8 py-3 rounded-sm hover:bg-[#236b4f]"
               >
                 Shop Now
                 <ChevronRight className="h-5 w-5" />
@@ -75,7 +77,7 @@ export default async function HomePage() {
                   src={banner.image_url}
                   alt={banner.title}
                   fill
-                  className="object-cover group-hover:scale-105 transition-transform"
+                  className="object-cover group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                   <div>
@@ -99,7 +101,7 @@ export default async function HomePage() {
             <Link
               key={category.id}
               href={`/products?category=${category.slug}`}
-              className="flex flex-col items-center p-4 bg-white border rounded-lg hover:shadow-md hover:border-flipkart-blue transition-all group"
+              className="flex flex-col items-center p-4 bg-white border rounded-lg hover:shadow-md hover:border-flipkart-blue group"
             >
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100">
                 <span className="text-2xl">👟</span>

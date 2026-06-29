@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,8 @@ interface ProductEditFormProps {
 export function ProductEditForm({ product, categories }: ProductEditFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const primaryImage = product.product_images?.find((img) => img.is_primary)?.image_url
+    || product.product_images?.[0]?.image_url;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -62,7 +65,7 @@ export function ProductEditForm({ product, categories }: ProductEditFormProps) {
       <CardContent>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label>Barcode</Label>
+            <Label>BCN / Barcode</Label>
             <Input value={product.barcode} disabled />
           </div>
           <div>
@@ -105,6 +108,21 @@ export function ProductEditForm({ product, categories }: ProductEditFormProps) {
           <div>
             <Label htmlFor="quantity">Stock</Label>
             <Input id="quantity" name="quantity" type="number" defaultValue={product.quantity} />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Current Image</Label>
+            {primaryImage ? (
+              <div className="mt-2 relative h-32 w-32 rounded-lg overflow-hidden border">
+                <Image src={primaryImage} alt={product.name} fill className="object-cover" />
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1">No image uploaded</p>
+            )}
+          </div>
+          <div className="md:col-span-2">
+            <Label htmlFor="image">Upload New Image</Label>
+            <Input id="image" name="image" type="file" accept="image/*" />
+            <p className="text-xs text-gray-500 mt-1">New image becomes the primary product photo</p>
           </div>
           <div className="md:col-span-2 flex gap-3">
             <Button type="submit" variant="flipkart" disabled={loading}>

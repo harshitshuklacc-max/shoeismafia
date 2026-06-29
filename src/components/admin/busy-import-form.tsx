@@ -166,7 +166,7 @@ export function BusyImportForm() {
               <p className="text-sm text-flipkart-blue">{progressLabel}</p>
               <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                 <div
-                  className="h-full bg-flipkart-blue transition-all duration-300"
+                  className="h-full bg-flipkart-blue"
                   style={{ width: `${progress}%` }}
                 />
               </div>

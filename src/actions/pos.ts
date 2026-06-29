@@ -22,7 +22,8 @@ const PRODUCT_SELECT = `
 export async function processPosSale(
   items: PosSaleItem[],
   paymentMethod: string,
-  discount = 0
+  discount = 0,
+  salesmanId?: string | null
 ): Promise<ActionResult<{ saleNumber: string; saleId: string }>> {
   if (items.length === 0) {
     return { success: false, error: "No items in sale" };
@@ -43,12 +44,30 @@ export async function processPosSale(
   const total = subtotal - discount;
   const saleNumber = generateSaleNumber();
 
+  let salesmanName: string | null = null;
+  if (salesmanId) {
+    const salesman = await dbQueryOne<{ name: string }>(
+      "SELECT name FROM salesmen WHERE id = $1 AND is_active = true",
+      [salesmanId]
+    );
+    salesmanName = salesman?.name || null;
+  }
+
   try {
     const sale = await dbQueryOne<{ id: string }>(
-      `INSERT INTO pos_sales (sale_number, items, subtotal, tax, discount, total, payment_method)
-       VALUES ($1, $2::jsonb, $3, 0, $4, $5, $6)
+      `INSERT INTO pos_sales (sale_number, items, subtotal, tax, discount, total, payment_method, salesman_id, salesman_name)
+       VALUES ($1, $2::jsonb, $3, 0, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [saleNumber, JSON.stringify(items), subtotal, discount, total, paymentMethod]
+      [
+        saleNumber,
+        JSON.stringify(items),
+        subtotal,
+        discount,
+        total,
+        paymentMethod,
+        salesmanId || null,
+        salesmanName,
+      ]
     );
 
     if (!sale) {

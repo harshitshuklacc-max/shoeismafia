@@ -1,19 +1,28 @@
 import { verifyAdminSession } from "@/actions/admin-auth";
 import { getPortalDataCounts } from "@/actions/admin-reset";
+import { getSalesmanStats } from "@/actions/salesmen";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetPortalButton } from "@/components/admin/reset-portal-button";
+import { SalesmenSettings } from "@/components/admin/salesmen-settings";
 
 export default async function AdminSettingsPage() {
   const isAdmin = await verifyAdminSession();
   if (!isAdmin) redirect("/admin/login");
 
-  const counts = await getPortalDataCounts();
+  const [counts, salesmanStats] = await Promise.all([
+    getPortalDataCounts(),
+    getSalesmanStats(),
+  ]);
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-2">Settings</h1>
-      <p className="text-sm text-gray-500 mb-6">Manage admin portal data and dangerous actions.</p>
+      <p className="text-sm text-gray-500 mb-6">Manage salesmen, portal data, and dangerous actions.</p>
+
+      <div className="space-y-6 mb-8">
+        <SalesmenSettings stats={salesmanStats} />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>

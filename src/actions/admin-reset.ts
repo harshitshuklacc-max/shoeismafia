@@ -103,6 +103,8 @@ export async function resetAllPortalData(
       await query("DELETE FROM stock_history");
       await query("DELETE FROM restock_logs");
       await query("DELETE FROM busy_import_logs");
+      await query("UPDATE salesmen SET is_active = false");
+      await query("UPDATE parties SET is_active = false");
       await query("DELETE FROM reviews");
       await query("DELETE FROM cart_items");
       await query("DELETE FROM wishlist");

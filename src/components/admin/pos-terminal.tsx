@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { searchPosProducts, processPosSale } from "@/actions/pos";
+import { getSalesmen } from "@/actions/salesmen";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -25,7 +26,7 @@ import {
   Banknote,
   Smartphone,
 } from "lucide-react";
-import type { Product, PosSaleItem } from "@/types";
+import type { Product, PosSaleItem, Salesman } from "@/types";
 import { printPosReceipt } from "@/lib/pos-receipt";
 
 export function PosTerminal() {
@@ -33,12 +34,15 @@ export function PosTerminal() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [cart, setCart] = useState<PosSaleItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [salesmanId, setSalesmanId] = useState<string>("");
+  const [salesmen, setSalesmen] = useState<Salesman[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastSale, setLastSale] = useState<{
     saleNumber: string;
     items: PosSaleItem[];
     total: number;
     paymentMethod: string;
+    salesmanName?: string;
   } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const barcodeBufferRef = useRef("");
@@ -98,6 +102,10 @@ export function PosTerminal() {
     },
     [addToCart]
   );
+
+  useEffect(() => {
+    getSalesmen(true).then(setSalesmen);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -161,19 +169,26 @@ export function PosTerminal() {
       return;
     }
     setLoading(true);
-    const result = await processPosSale(cart, paymentMethod);
+    const result = await processPosSale(
+      cart,
+      paymentMethod,
+      0,
+      salesmanId || null
+    );
     setLoading(false);
 
     if (result.success && result.data) {
       const saleItems = [...cart];
       const saleTotal = subtotal;
       const salePayment = paymentMethod;
+      const selectedSalesman = salesmen.find((s) => s.id === salesmanId);
 
       setLastSale({
         saleNumber: result.data.saleNumber,
         items: saleItems,
         total: saleTotal,
         paymentMethod: salePayment,
+        salesmanName: selectedSalesman?.name,
       });
       setCart([]);
       searchInputRef.current?.focus();
@@ -186,6 +201,7 @@ export function PosTerminal() {
         subtotal: saleTotal,
         total: saleTotal,
         paymentMethod: salePayment,
+        salesmanName: selectedSalesman?.name,
       });
     } else {
       toast.error(result.error || "Sale failed");
@@ -200,6 +216,7 @@ export function PosTerminal() {
       subtotal: lastSale.total,
       total: lastSale.total,
       paymentMethod: lastSale.paymentMethod,
+      salesmanName: lastSale.salesmanName,
     });
   };
 
@@ -327,6 +344,22 @@ export function PosTerminal() {
             <CardTitle className="text-lg">Payment</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-2">Salesman</p>
+              <Select value={salesmanId || undefined} onValueChange={setSalesmanId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select salesman (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {salesmen.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <Select value={paymentMethod} onValueChange={setPaymentMethod}>
               <SelectTrigger>
                 <SelectValue />
@@ -374,6 +407,9 @@ export function PosTerminal() {
             </CardHeader>
             <CardContent>
               <Badge className="mb-2">{lastSale.saleNumber}</Badge>
+              {lastSale.salesmanName && (
+                <p className="text-sm text-gray-500 mb-1">Salesman: {lastSale.salesmanName}</p>
+              )}
               <p className="font-bold text-xl">{formatCurrency(lastSale.total)}</p>
               <div className="flex gap-2 mt-3">
                 <Button variant="outline" size="sm" onClick={handlePrintInvoice}>

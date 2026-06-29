@@ -162,6 +162,8 @@ export interface PosSale {
   discount: number;
   total: number;
   payment_method: PaymentMethod;
+  salesman_id?: string | null;
+  salesman_name?: string | null;
   created_at: string;
 }
 
@@ -208,8 +210,24 @@ export interface RestockLog {
   quantity_before: number;
   quantity_after: number;
   notes: string | null;
+  party_name: string | null;
   created_at: string;
-  product?: Product;
+  product?: Product | { name: string; barcode?: string };
+}
+
+export interface LatestStockEntry {
+  id: string;
+  party_name: string;
+  product_name: string;
+  barcode: string;
+  quantity_added: number;
+  created_at: string;
+}
+
+export interface LatestStockByParty {
+  party_name: string;
+  items: LatestStockEntry[];
+  last_received_at: string;
 }
 
 export interface BusyImportLog {
@@ -292,4 +310,56 @@ export interface ActionResult<T = void> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+export interface Salesman {
+  id: string;
+  name: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SalesmanStats extends Salesman {
+  sale_count: number;
+  total_sales: number;
+}
+
+export interface Party {
+  id: string;
+  name: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ProductAvailability {
+  id: string;
+  barcode: string;
+  name: string;
+  brand: string | null;
+  quantity: number;
+  selling_price: number;
+  is_active: boolean;
+  image_url: string | null;
+}
+
+export interface BulkProductInput {
+  name: string;
+  brand?: string;
+  description?: string;
+  category_id?: string;
+  cost_price?: number;
+  selling_price?: number;
+  mrp?: number;
+  quantity?: number;
+  gst_rate?: number;
+  hsn_code?: string;
+  barcode?: string;
+}
+
+export interface CreatedProductBarcode {
+  id: string;
+  barcode: string;
+  name: string;
 }

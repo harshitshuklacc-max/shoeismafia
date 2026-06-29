@@ -6,6 +6,29 @@ const ADMIN_COOKIE = "admin_session";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Admin — cookie only, no Supabase network call
+  if (pathname.startsWith("/admin")) {
+    if (pathname !== "/admin/login") {
+      const adminToken = request.cookies.get(ADMIN_COOKIE)?.value;
+      if (!adminToken) {
+        return NextResponse.redirect(new URL("/admin/login", request.url));
+      }
+    }
+    return NextResponse.next();
+  }
+
+  // Public shop pages — skip auth entirely (major speed win)
+  if (
+    !pathname.startsWith("/account") &&
+    !pathname.startsWith("/login") &&
+    !pathname.startsWith("/checkout") &&
+    !pathname.startsWith("/wishlist") &&
+    !pathname.startsWith("/cart")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Auth only where needed
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -17,9 +40,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -29,24 +50,12 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
-    const adminToken = request.cookies.get(ADMIN_COOKIE)?.value;
-    if (!adminToken) {
-      return NextResponse.redirect(new URL("/admin/login", request.url));
-    }
-  }
-
-  if (pathname.startsWith("/account")) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.redirect(
-        new URL(`/login?redirect=${pathname}`, request.url)
-      );
-    }
+  if (pathname.startsWith("/account") && !user) {
+    return NextResponse.redirect(new URL(`/login?redirect=${pathname}`, request.url));
   }
 
   return supabaseResponse;
