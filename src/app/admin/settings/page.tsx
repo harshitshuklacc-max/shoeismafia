@@ -1,18 +1,21 @@
 import { verifyAdminSession } from "@/actions/admin-auth";
 import { getPortalDataCounts } from "@/actions/admin-reset";
 import { getSalesmanStats } from "@/actions/salesmen";
+import { getPrinterSettings } from "@/actions/printer-settings";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetPortalButton } from "@/components/admin/reset-portal-button";
 import { SalesmenSettings } from "@/components/admin/salesmen-settings";
+import { PrinterSettingsPanel } from "@/components/admin/printer-settings-panel";
 
 export default async function AdminSettingsPage() {
   const isAdmin = await verifyAdminSession();
   if (!isAdmin) redirect("/admin/login");
 
-  const [counts, salesmanStats] = await Promise.all([
+  const [counts, salesmanStats, printerSettings] = await Promise.all([
     getPortalDataCounts(),
     getSalesmanStats(),
+    getPrinterSettings(),
   ]);
 
   return (
@@ -21,6 +24,7 @@ export default async function AdminSettingsPage() {
       <p className="text-sm text-gray-500 mb-6">Manage salesmen, portal data, and dangerous actions.</p>
 
       <div className="space-y-6 mb-8">
+        <PrinterSettingsPanel initialSettings={printerSettings} />
         <SalesmenSettings stats={salesmanStats} />
       </div>
 

@@ -201,7 +201,7 @@ export async function createProductsBulk(
              barcode, name, slug, description, brand, category_id,
              cost_price, selling_price, mrp, quantity, gst_rate, hsn_code
            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           RETURNING id, barcode, name`,
+           RETURNING id, barcode, name, selling_price, mrp`,
           [
             barcode,
             name,

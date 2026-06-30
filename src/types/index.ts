@@ -222,6 +222,9 @@ export interface LatestStockEntry {
   barcode: string;
   quantity_added: number;
   created_at: string;
+  selling_price: number;
+  mrp: number;
+  sku?: string | null;
 }
 
 export interface LatestStockByParty {
@@ -362,4 +365,31 @@ export interface CreatedProductBarcode {
   id: string;
   barcode: string;
   name: string;
+  selling_price: number;
+  mrp: number;
+}
+
+export type LabelSize = "50x25" | "100x50";
+
+export type BarcodeSymbology = "128" | "EAN13" | "EAN8" | "UPCA" | "39" | "QRCODE";
+
+export interface BarcodePrinterSettings {
+  printerName: string;
+  labelSize: LabelSize;
+  barcodeType: BarcodeSymbology;
+  connectionType: "usb" | "ethernet" | "serial";
+  showLogo: boolean;
+  showMrp: boolean;
+  copiesDefault: number;
+}
+
+export interface LabelProductData {
+  name: string;
+  barcode: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  sellingPrice: number;
+  mrp?: number;
+  brand?: string;
 }

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateProduct, deleteProduct } from "@/actions/products";
+import { PrintLabelButton } from "@/components/admin/print-label-button";
 import { toast } from "sonner";
 import type { Category, Product } from "@/types";
 
@@ -59,8 +60,12 @@ export function ProductEditForm({ product, categories }: ProductEditFormProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
         <CardTitle>{product.name}</CardTitle>
+        <div className="flex gap-2 shrink-0">
+          <PrintLabelButton product={product} quickPrint label="Print Label" />
+          <PrintLabelButton product={product} label="Options" />
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">

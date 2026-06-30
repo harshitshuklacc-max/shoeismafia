@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DeleteAllProductsButton } from "@/components/admin/delete-all-products-button";
+import { ProductRowActions } from "@/components/admin/product-row-actions";
 import { Plus } from "lucide-react";
 
 export default async function AdminProductsPage() {
@@ -43,12 +44,13 @@ export default async function AdminProductsPage() {
                 <th className="text-right p-3 font-medium">Stock</th>
                 <th className="text-left p-3 font-medium">Status</th>
                 <th className="text-left p-3 font-medium">Actions</th>
+                <th className="text-left p-3 font-medium">Label</th>
               </tr>
             </thead>
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                    <td colSpan={10} className="p-8 text-center text-gray-500">
                     No products yet. Add your first product.
                   </td>
                 </tr>
@@ -82,6 +84,9 @@ export default async function AdminProductsPage() {
                       >
                         Edit
                       </Link>
+                    </td>
+                    <td className="p-3">
+                      <ProductRowActions product={product} />
                     </td>
                   </tr>
                 ))

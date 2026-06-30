@@ -16,6 +16,7 @@ import {
 import { restockProduct } from "@/actions/inventory";
 import { getProductByBarcode } from "@/actions/products";
 import { createParty } from "@/actions/parties";
+import { PrintLabelButton } from "@/components/admin/print-label-button";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { ScanBarcode, Package } from "lucide-react";
@@ -139,6 +140,9 @@ export function RestockForm({ parties: initialParties }: RestockFormProps) {
                       Price: {formatCurrency(product.selling_price)}
                     </p>
                   </div>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <PrintLabelButton product={product} quickPrint label="Print Label" />
                 </div>
               </div>
             )}

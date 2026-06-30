@@ -2,6 +2,7 @@ import { getLatestStockByParty } from "@/actions/inventory";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InventoryLabelPrint } from "@/components/admin/inventory-label-print";
 import { Package } from "lucide-react";
 
 export async function LatestStockSection() {
@@ -40,9 +41,16 @@ export async function LatestStockSection() {
                         <p className="font-medium truncate">{item.product_name}</p>
                         <p className="text-xs text-gray-500 font-mono">BCN: {item.barcode}</p>
                       </div>
-                      <div className="text-right shrink-0">
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
                         <p className="font-semibold text-green-600">+{item.quantity_added}</p>
                         <p className="text-xs text-gray-500">{formatDateTime(item.created_at)}</p>
+                        <InventoryLabelPrint
+                          name={item.product_name}
+                          barcode={item.barcode}
+                          sellingPrice={item.selling_price}
+                          mrp={item.mrp}
+                          sku={item.sku}
+                        />
                       </div>
                     </li>
                   ))}

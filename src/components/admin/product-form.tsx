@@ -17,6 +17,7 @@ import { BarcodePreview } from "@/components/admin/barcode-preview";
 import { createProductsBulk, generateNextBcnRange } from "@/actions/products";
 import { createParty } from "@/actions/parties";
 import { downloadBarcodePng, downloadBarcodesPdf } from "@/lib/barcode-label";
+import { PrintLabelButton } from "@/components/admin/print-label-button";
 import { toast } from "sonner";
 import { Download, Plus, Trash2 } from "lucide-react";
 import type { Category, CreatedProductBarcode, Party } from "@/types";
@@ -204,6 +205,17 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                   <Download className="h-3.5 w-3.5 mr-1" />
                   Download PNG
                 </Button>
+                <PrintLabelButton
+                  product={{
+                    name: product.name,
+                    barcode: product.barcode,
+                    sellingPrice: product.selling_price,
+                    mrp: product.mrp,
+                  }}
+                  quickPrint
+                  label="TVS Print"
+                  variant="flipkart"
+                />
               </div>
             ))}
           </div>

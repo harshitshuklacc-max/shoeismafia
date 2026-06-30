@@ -108,7 +108,7 @@ export async function getInventoryLogs(limit = 50) {
   const serviceClient = createServiceClient();
   const { data } = await serviceClient
     .from("inventory_logs")
-    .select("*, product:products(name, barcode)")
+    .select("*, product:products(name, barcode, selling_price, mrp, sku)")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -143,8 +143,11 @@ export async function getRestockLogs() {
     party_name: string | null;
     created_at: string;
     product_name: string | null;
+    selling_price: number | null;
+    mrp: number | null;
+    sku: string | null;
   }>(
-    `SELECT rl.*, p.name AS product_name
+    `SELECT rl.*, p.name AS product_name, p.selling_price, p.mrp, p.sku
      FROM restock_logs rl
      LEFT JOIN products p ON p.id = rl.product_id
      ORDER BY rl.created_at DESC
@@ -153,7 +156,15 @@ export async function getRestockLogs() {
 
   return rows.map((row) => ({
     ...row,
-    product: row.product_name ? { name: row.product_name, barcode: row.barcode } : undefined,
+    product: row.product_name
+      ? {
+          name: row.product_name,
+          barcode: row.barcode,
+          selling_price: row.selling_price ?? 0,
+          mrp: row.mrp ?? 0,
+          sku: row.sku,
+        }
+      : undefined,
   }));
 }
 
@@ -165,8 +176,12 @@ export async function getLatestStockByParty(limit = 30): Promise<LatestStockByPa
     barcode: string;
     quantity_added: number;
     created_at: string;
+    selling_price: number;
+    mrp: number;
+    sku: string | null;
   }>(
-    `SELECT rl.id, rl.party_name, p.name AS product_name, rl.barcode, rl.quantity_added, rl.created_at
+    `SELECT rl.id, rl.party_name, p.name AS product_name, rl.barcode, rl.quantity_added, rl.created_at,
+            COALESCE(p.selling_price, 0) AS selling_price, COALESCE(p.mrp, 0) AS mrp, p.sku
      FROM restock_logs rl
      LEFT JOIN products p ON p.id = rl.product_id
      ORDER BY rl.created_at DESC
@@ -185,6 +200,9 @@ export async function getLatestStockByParty(limit = 30): Promise<LatestStockByPa
       barcode: row.barcode,
       quantity_added: row.quantity_added,
       created_at: row.created_at,
+      selling_price: row.selling_price,
+      mrp: row.mrp,
+      sku: row.sku,
     };
 
     const existing = grouped.get(partyName);

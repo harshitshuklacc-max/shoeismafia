@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LatestStockSection } from "@/components/admin/latest-stock-section";
+import { InventoryLabelPrint } from "@/components/admin/inventory-label-print";
 
 export default async function InventoryPage() {
   const isAdmin = await verifyAdminSession();
@@ -57,12 +58,13 @@ export default async function InventoryPage() {
                   <th className="text-right p-3">Change</th>
                   <th className="text-right p-3">Before</th>
                   <th className="text-right p-3">After</th>
+                  <th className="text-left p-3">Label</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">No inventory logs yet</td>
+                    <td colSpan={8} className="p-8 text-center text-gray-500">No inventory logs yet</td>
                   </tr>
                 ) : (
                   logs.map((log) => (
@@ -78,6 +80,17 @@ export default async function InventoryPage() {
                       </td>
                       <td className="p-3 text-right">{log.quantity_before}</td>
                       <td className="p-3 text-right">{log.quantity_after}</td>
+                      <td className="p-3">
+                        {(log.product as { name?: string })?.name && (
+                          <InventoryLabelPrint
+                            name={(log.product as { name: string }).name}
+                            barcode={log.barcode}
+                            sellingPrice={(log.product as { selling_price?: number }).selling_price}
+                            mrp={(log.product as { mrp?: number }).mrp}
+                            sku={(log.product as { sku?: string }).sku}
+                          />
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -98,12 +111,13 @@ export default async function InventoryPage() {
                   <th className="text-right p-3">Added</th>
                   <th className="text-right p-3">Before</th>
                   <th className="text-right p-3">After</th>
+                  <th className="text-left p-3">Label</th>
                 </tr>
               </thead>
               <tbody>
                 {restockLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">No restock logs yet</td>
+                    <td colSpan={8} className="p-8 text-center text-gray-500">No restock logs yet</td>
                   </tr>
                 ) : (
                   restockLogs.map((log) => (
@@ -117,6 +131,17 @@ export default async function InventoryPage() {
                       <td className="p-3 text-right text-green-600 font-medium">+{log.quantity_added}</td>
                       <td className="p-3 text-right">{log.quantity_before}</td>
                       <td className="p-3 text-right">{log.quantity_after}</td>
+                      <td className="p-3">
+                        {(log.product as { name?: string })?.name && (
+                          <InventoryLabelPrint
+                            name={(log.product as { name: string }).name}
+                            barcode={log.barcode}
+                            sellingPrice={(log.product as { selling_price?: number }).selling_price}
+                            mrp={(log.product as { mrp?: number }).mrp}
+                            sku={(log.product as { sku?: string }).sku}
+                          />
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
