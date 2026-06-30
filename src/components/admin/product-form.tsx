@@ -16,7 +16,8 @@ import {
 import { BarcodePreview } from "@/components/admin/barcode-preview";
 import { createProductsBulk, generateNextBcnRange } from "@/actions/products";
 import { createParty } from "@/actions/parties";
-import { downloadBarcodePng, downloadBarcodesPdf, printBarcodeLabelsWithSettings, type BarcodeLabelPrintItem } from "@/lib/barcode-label";
+import { downloadBarcodePng, downloadBarcodesPdf, printBarcodeLabelsWithSettings } from "@/lib/barcode-label";
+import { printLabelsDirect } from "@/lib/label-print";
 import { parseSizeColorFromName } from "@/lib/label-data";
 import { PrintLabelButton } from "@/components/admin/print-label-button";
 import { toast } from "sonner";
@@ -78,11 +79,7 @@ function rowToLabelData(row: ProductRow): LabelProductData {
   };
 }
 
-function rowToPrintItem(row: ProductRow): BarcodeLabelPrintItem {
-  return rowToLabelData(row);
-}
-
-function createdToPrintItem(product: CreatedProductBarcode): BarcodeLabelPrintItem {
+function createdToPrintItem(product: CreatedProductBarcode): LabelProductData {
   const parsed = parseSizeColorFromName(product.name);
   return {
     name: product.name,
@@ -179,28 +176,40 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
     toast.success("All barcodes downloaded");
   };
 
+  const printToTvs = async (items: ReturnType<typeof rowToLabelData>[]) => {
+    try {
+      const result = await printLabelsDirect(items);
+      toast.success(`Sent ${result.count} label(s) to TVS LP 46 (${result.method.toUpperCase()})`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "TVS print failed");
+      try {
+        await printBarcodeLabelsWithSettings(items);
+        toast.message("Fallback: Chrome print opened — select TVS LP 46, scale 100%");
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const handlePrintRow = async (row: ProductRow) => {
     if (!row.previewBcn) return;
-    await printBarcodeLabelsWithSettings([rowToPrintItem(row)]);
-    toast.success("Print dialog opened — select your TVS LP 46 printer");
+    await printToTvs([rowToLabelData(row)]);
   };
 
   const handlePrintAllPreview = async () => {
     const items = rows
       .filter((row) => row.previewBcn && row.name.trim())
-      .map(rowToPrintItem);
+      .map(rowToLabelData);
     if (items.length === 0) {
       toast.error("Add at least one product with a name");
       return;
     }
-    await printBarcodeLabelsWithSettings(items);
-    toast.success(`Print dialog opened for ${items.length} label(s)`);
+    await printToTvs(items);
   };
 
   const handlePrintAllCreated = async () => {
     if (createdProducts.length === 0) return;
-    await printBarcodeLabelsWithSettings(createdProducts.map(createdToPrintItem));
-    toast.success(`Print dialog opened for ${createdProducts.length} label(s)`);
+    await printToTvs(createdProducts.map(createdToPrintItem));
   };
 
   const handleDownloadCreated = async () => {
@@ -257,12 +266,12 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
           <div>
             <CardTitle>Products Created — Print Barcodes</CardTitle>
             <p className="text-sm text-gray-500 mt-1">
-              PDF downloaded automatically. Print all labels via Chrome — select TVS LP 46 DLite Plus.
+              PDF downloaded automatically. Print all aligned labels directly to TVS LP 46 DLite Plus.
             </p>
           </div>
           <Button type="button" variant="flipkart" onClick={handlePrintAllCreated}>
             <Printer className="h-4 w-4 mr-1" />
-            Print All Barcodes
+            Print All to TVS
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -301,10 +310,10 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                   variant="outline"
                   size="sm"
                   className="w-full mt-1"
-                  onClick={() => printBarcodeLabelsWithSettings([createdToPrintItem(product)])}
+                  onClick={() => printToTvs([createdToPrintItem(product)])}
                 >
                   <Printer className="h-3.5 w-3.5 mr-1" />
-                  Print Label
+                  Print to TVS
                 </Button>
               </div>
             ))}
@@ -312,7 +321,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
           <div className="flex flex-wrap gap-3">
             <Button type="button" variant="flipkart" onClick={handlePrintAllCreated}>
               <Printer className="h-4 w-4 mr-1" />
-              Print All Barcodes
+              Print All to TVS
             </Button>
             <Button type="button" variant="outline" onClick={handleDownloadCreated}>
               <Download className="h-4 w-4 mr-1" />
@@ -409,7 +418,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="flipkart" size="sm" onClick={handlePrintAllPreview}>
               <Printer className="h-4 w-4 mr-1" />
-              Print All Barcodes
+              Print All to TVS
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={handleDownloadAllPreview}>
               <Download className="h-4 w-4 mr-1" />
@@ -500,7 +509,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                             disabled={!row.previewBcn}
                           >
                             <Printer className="h-3 w-3 mr-1" />
-                            Print
+                            TVS
                           </Button>
                           <Button
                             type="button"

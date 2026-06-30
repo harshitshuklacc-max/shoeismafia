@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LabelPrintDialog } from "@/components/admin/label-print-dialog";
-import { getPrinterSettings } from "@/actions/printer-settings";
-import { buildTsplLabel, validateBarcodeForSymbology } from "@/lib/tspl";
-import { printRawTspl } from "@/lib/qz-label-print";
+import { printLabelsDirect } from "@/lib/label-print";
 import { productToLabelData } from "@/lib/label-data";
 import { toast } from "sonner";
 import { Printer } from "lucide-react";
@@ -38,26 +36,8 @@ export function PrintLabelButton({
   const handleQuickPrint = async () => {
     setBusy(true);
     try {
-      const settings = await getPrinterSettings();
-      if (!settings.printerName) {
-        setOpen(true);
-        toast.message("Select printer first");
-        return;
-      }
-      const err = validateBarcodeForSymbology(labelData.barcode, settings.barcodeType);
-      if (err) {
-        toast.error(err);
-        return;
-      }
-      const tspl = buildTsplLabel(labelData, {
-        labelSize: settings.labelSize,
-        barcodeType: settings.barcodeType,
-        showLogo: settings.showLogo,
-        showMrp: settings.showMrp,
-        copies: settings.copiesDefault,
-      });
-      await printRawTspl(settings.printerName, tspl);
-      toast.success("Label sent to printer");
+      await printLabelsDirect([labelData]);
+      toast.success("Label sent to TVS LP 46");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Print failed");
       setOpen(true);

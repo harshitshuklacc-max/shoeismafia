@@ -1,4 +1,5 @@
 import type { BarcodeSymbology, LabelProductData, LabelSize } from "@/types";
+import { getLabelLayout, labelDimensions } from "@/lib/label-layout";
 
 export const BATCH_PRINT_PRESETS = [1, 5, 10, 50] as const;
 
@@ -32,11 +33,6 @@ function formatMoney(amount: number): string {
   return `Rs.${Math.round(amount)}`;
 }
 
-function labelDimensions(size: LabelSize): { widthMm: number; heightMm: number } {
-  if (size === "100x50") return { widthMm: 100, heightMm: 50 };
-  return { widthMm: 50, heightMm: 25 };
-}
-
 function tsplSymbology(type: BarcodeSymbology): string {
   switch (type) {
     case "EAN13":
@@ -57,43 +53,65 @@ function isNumericBarcode(code: string): boolean {
   return /^\d+$/.test(code);
 }
 
-function barcodeHeight(size: LabelSize): number {
-  return size === "100x50" ? 90 : 52;
-}
-
-function buildQrSection(data: LabelProductData, opts: TsplLabelOptions): string[] {
-  const { heightMm } = labelDimensions(opts.labelSize);
+function buildQrSection(
+  data: LabelProductData,
+  opts: TsplLabelOptions,
+  layout: ReturnType<typeof getLabelLayout>
+): string[] {
   const qrSize = opts.labelSize === "100x50" ? 4 : 3;
-  const y = opts.showLogo ? 38 : 20;
-  const qrY = Math.min(y + 10, heightMm * 8 - 80);
+  const qrY = layout.barcodeY;
+  const qrX = opts.labelSize === "100x50" ? 420 : 180;
   return [
-    `QRCODE 220,${qrY},M,${qrSize},A,0,"${escapeTsplText(data.barcode)}"`,
-    `TEXT 10,${qrY + 70},"2",0,1,1,"${escapeTsplText(data.barcode)}"`,
+    `QRCODE ${qrX},${qrY},M,${qrSize},A,0,"${escapeTsplText(data.barcode)}"`,
+    `TEXT ${layout.marginX},${layout.bcnY},"1",0,1,1,"${escapeTsplText(data.barcode)}"`,
   ];
 }
 
-function buildBarcodeSection(data: LabelProductData, opts: TsplLabelOptions): string[] {
+function buildBarcodeSection(
+  data: LabelProductData,
+  opts: TsplLabelOptions,
+  layout: ReturnType<typeof getLabelLayout>
+): string[] {
   const code = data.barcode.replace(/\s/g, "");
   const sym = tsplSymbology(opts.barcodeType);
 
   if (opts.barcodeType === "QRCODE") {
-    return buildQrSection(data, opts);
+    return buildQrSection(data, opts, layout);
   }
 
   if (opts.barcodeType === "EAN13" && code.length !== 12 && code.length !== 13) {
-    return [`TEXT 10,90,"2",0,1,1,"Invalid EAN-13: ${escapeTsplText(code)}"`];
+    return [`TEXT ${layout.marginX},${layout.barcodeY},"1",0,1,1,"Invalid EAN-13: ${escapeTsplText(code)}"`];
   }
 
-  const y = opts.labelSize === "100x50" ? 110 : 78;
-  const h = barcodeHeight(opts.labelSize);
+  const narrow = opts.labelSize === "100x50" ? 2 : 2;
+  const wide = opts.labelSize === "100x50" ? 4 : 3;
+
   return [
-    `BARCODE 10,${y},"${sym}",${h},1,0,2,4,"${escapeTsplText(code)}"`,
-    `TEXT 10,${y + h + 8},"2",0,1,1,"BCN: ${escapeTsplText(code)}"`,
+    `BARCODE ${layout.marginX},${layout.barcodeY},"${sym}",${layout.barcodeHeight},1,0,${narrow},${wide},"${escapeTsplText(code)}"`,
+    `TEXT ${layout.marginX},${layout.bcnY},"1",0,1,1,"BCN: ${escapeTsplText(code)}"`,
   ];
 }
 
 export function buildTsplLabel(data: LabelProductData, opts: TsplLabelOptions): string {
   const { widthMm, heightMm } = labelDimensions(opts.labelSize);
+
+  const meta: string[] = [];
+  if (data.sku) meta.push(`SKU:${truncate(data.sku, 14)}`);
+  if (data.size) meta.push(`Sz:${truncate(data.size, 8)}`);
+  if (data.color) meta.push(`Col:${truncate(data.color, 10)}`);
+  const hasMeta = meta.length > 0;
+
+  const layout = getLabelLayout(opts.labelSize, {
+    showLogo: opts.showLogo,
+    hasMeta,
+  });
+
+  const nameMax = opts.labelSize === "100x50" ? 42 : 22;
+  const logoFont = opts.labelSize === "100x50" ? "3" : "2";
+  const nameFont = opts.labelSize === "100x50" ? "3" : "2";
+  const metaFont = "1";
+  const priceFont = opts.labelSize === "100x50" ? "3" : "2";
+
   const lines: string[] = [
     `SIZE ${widthMm} mm,${heightMm} mm`,
     "GAP 2 mm,0 mm",
@@ -104,32 +122,25 @@ export function buildTsplLabel(data: LabelProductData, opts: TsplLabelOptions): 
     "CLS",
   ];
 
-  let y = 8;
-
-  if (opts.showLogo) {
-    lines.push(`TEXT 10,${y},"3",0,1,1,"SHOE MAFIA"`);
-    y += 28;
+  if (opts.showLogo && layout.logoY !== null) {
+    lines.push(`TEXT ${layout.marginX},${layout.logoY},"${logoFont}",0,1,1,"SHOE MAFIA"`);
   }
 
-  lines.push(`TEXT 10,${y},"2",0,1,1,"${escapeTsplText(truncate(data.name, opts.labelSize === "100x50" ? 42 : 22))}"`);
-  y += 22;
+  lines.push(
+    `TEXT ${layout.marginX},${layout.nameY},"${nameFont}",0,1,1,"${escapeTsplText(truncate(data.name, nameMax))}"`
+  );
 
-  const meta: string[] = [];
-  if (data.sku) meta.push(`SKU:${truncate(data.sku, 14)}`);
-  if (data.size) meta.push(`Sz:${truncate(data.size, 8)}`);
-  if (data.color) meta.push(`Col:${truncate(data.color, 10)}`);
-  if (meta.length > 0) {
-    lines.push(`TEXT 10,${y},"2",0,1,1,"${escapeTsplText(meta.join("  "))}"`);
-    y += 20;
+  if (hasMeta && layout.metaY !== null) {
+    lines.push(`TEXT ${layout.marginX},${layout.metaY},"${metaFont}",0,1,1,"${escapeTsplText(meta.join("  "))}"`);
   }
 
-  lines.push(...buildBarcodeSection(data, opts));
+  lines.push(...buildBarcodeSection(data, opts, layout));
 
-  const priceY = opts.labelSize === "100x50" ? 210 : 168;
-  const priceLine = opts.showMrp && data.mrp && data.mrp > data.sellingPrice
-    ? `${formatMoney(data.sellingPrice)}  MRP:${formatMoney(data.mrp)}`
-    : formatMoney(data.sellingPrice);
-  lines.push(`TEXT 10,${priceY},"2",0,1,1,"${escapeTsplText(priceLine)}"`);
+  const priceLine =
+    opts.showMrp && data.mrp && data.mrp > data.sellingPrice
+      ? `${formatMoney(data.sellingPrice)}  MRP:${formatMoney(data.mrp)}`
+      : formatMoney(data.sellingPrice);
+  lines.push(`TEXT ${layout.marginX},${layout.priceY},"${priceFont}",0,1,1,"${escapeTsplText(priceLine)}"`);
 
   lines.push(`PRINT ${Math.max(1, opts.copies)}`);
   return lines.join("\r\n");
