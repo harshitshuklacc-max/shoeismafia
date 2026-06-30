@@ -23,7 +23,7 @@ import {
   autoDetectTvsPrinter,
   downloadTsplFile,
   printRawTspl,
-} from "@/lib/qz-label-print";
+} from "@/lib/tvs-print";
 import { toast } from "sonner";
 import { Printer } from "lucide-react";
 import type { BarcodePrinterSettings, BarcodeSymbology, LabelProductData, LabelSize } from "@/types";
@@ -108,15 +108,15 @@ export function LabelPrintDialog({
 
     setPrinting(true);
     try {
-      const result = await printRawTspl(printerName, tspl);
+      await printRawTspl(printerName, tspl);
       toast.success(
-        `Sent ${products.length} label(s) × ${opts.copies} to ${printerName} via ${result.method.toUpperCase()}`
+        `Sent ${products.length} label(s) × ${opts.copies} to ${printerName}`
       );
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Print failed");
       downloadTsplFile(tspl, "labels.tspl");
-      toast.message("TSPL file downloaded — send via QZ Tray or print agent");
+      toast.message("TSPL file downloaded — open with Notepad and send to printer");
     } finally {
       setPrinting(false);
     }

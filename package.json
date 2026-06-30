@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/run-with-print-agent.mjs dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/run-with-print-agent.mjs start",
+    "print-agent": "node scripts/tvs-print-agent.mjs",
     "lint": "next lint"
   },
   "dependencies": {
@@ -42,7 +43,6 @@
     "papaparse": "^5.4.1",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.22.0",
-    "qz-tray": "^2.2.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",

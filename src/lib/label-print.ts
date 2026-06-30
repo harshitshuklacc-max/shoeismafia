@@ -2,13 +2,13 @@
 
 import { getPrinterSettings } from "@/actions/printer-settings";
 import { buildTsplBatch, buildTsplLabel, validateBarcodeForSymbology } from "@/lib/tspl";
-import { printRawTspl, downloadTsplFile } from "@/lib/qz-label-print";
+import { printRawTspl, downloadTsplFile } from "@/lib/tvs-print";
 import type { LabelProductData } from "@/types";
 
 export async function printLabelsDirect(
   items: LabelProductData[],
   copies?: number
-): Promise<{ method: "qz" | "agent"; count: number }> {
+): Promise<{ method: "agent"; count: number }> {
   if (items.length === 0) {
     throw new Error("No labels to print");
   }

@@ -179,7 +179,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
   const printToTvs = async (items: ReturnType<typeof rowToLabelData>[]) => {
     try {
       const result = await printLabelsDirect(items);
-      toast.success(`Sent ${result.count} label(s) to TVS LP 46 (${result.method.toUpperCase()})`);
+      toast.success(`Sent ${result.count} label(s) to TVS LP 46`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "TVS print failed");
       try {

@@ -15,9 +15,9 @@ import {
 import { savePrinterSettings } from "@/actions/printer-settings";
 import {
   autoDetectTvsPrinter,
-  isQzAvailable,
-  qzSetupHint,
-} from "@/lib/qz-label-print";
+  isPrintServiceAvailable,
+  printSetupHint,
+} from "@/lib/tvs-print";
 import { toast } from "sonner";
 import { Printer, RefreshCw } from "lucide-react";
 import type { BarcodePrinterSettings, BarcodeSymbology, LabelSize } from "@/types";
@@ -31,15 +31,15 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
   const [printers, setPrinters] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [qzReady, setQzReady] = useState<boolean | null>(null);
+  const [serviceReady, setServiceReady] = useState<boolean | null>(null);
 
   const scanPrinters = useCallback(async () => {
     setScanning(true);
     try {
-      const ready = await isQzAvailable();
-      setQzReady(ready);
+      const ready = await isPrintServiceAvailable();
+      setServiceReady(ready);
       if (!ready) {
-        toast.error("QZ Tray not connected. Install from qz.io");
+        toast.error("Print service not running. Restart with: npm run dev");
         return;
       }
       const { printers: found, detected } = await autoDetectTvsPrinter(settings.printerName);
@@ -48,18 +48,20 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
         setSettings((s) => ({ ...s, printerName: detected }));
         toast.success(`Detected: ${detected}`);
       } else if (found.length === 0) {
-        toast.error("No printers found");
+        toast.error("No printers found — check USB connection");
+      } else {
+        toast.message(`${found.length} printer(s) found — select your TVS LP 46`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Scan failed");
-      setQzReady(false);
+      setServiceReady(false);
     } finally {
       setScanning(false);
     }
   }, [settings.printerName]);
 
   useEffect(() => {
-    isQzAvailable().then(setQzReady).catch(() => setQzReady(false));
+    isPrintServiceAvailable().then(setServiceReady).catch(() => setServiceReady(false));
   }, []);
 
   const handleSave = async () => {
@@ -83,14 +85,18 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600">
-          Direct TSPL printing via QZ Tray (USB). No browser print dialog. Compatible with TSC TSPL-EZ.
+          Direct TSPL printing to TVS LP 46 via USB. No extra software — print service runs with the app.
         </p>
 
         <div className="rounded-lg bg-gray-50 border p-3 text-xs text-gray-600">
-          Status:{" "}
-          {qzReady === null ? "Checking…" : qzReady ? "QZ Tray connected" : "QZ Tray not connected"}
-          {!qzReady && qzReady !== null && (
-            <p className="mt-1">{qzSetupHint()}</p>
+          Print service:{" "}
+          {serviceReady === null
+            ? "Checking…"
+            : serviceReady
+              ? "Running (built-in)"
+              : "Not running — restart with npm run dev"}
+          {!serviceReady && serviceReady !== null && (
+            <p className="mt-1">{printSetupHint()}</p>
           )}
         </div>
 
