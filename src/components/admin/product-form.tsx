@@ -16,11 +16,12 @@ import {
 import { BarcodePreview } from "@/components/admin/barcode-preview";
 import { createProductsBulk, generateNextBcnRange } from "@/actions/products";
 import { createParty } from "@/actions/parties";
-import { downloadBarcodePng, downloadBarcodesPdf } from "@/lib/barcode-label";
+import { downloadBarcodePng, downloadBarcodesPdf, printBarcodeLabelsWithSettings, type BarcodeLabelPrintItem } from "@/lib/barcode-label";
+import { parseSizeColorFromName } from "@/lib/label-data";
 import { PrintLabelButton } from "@/components/admin/print-label-button";
 import { toast } from "sonner";
-import { Download, Plus, Trash2 } from "lucide-react";
-import type { Category, CreatedProductBarcode, Party } from "@/types";
+import { Download, Plus, Printer, Trash2 } from "lucide-react";
+import type { Category, CreatedProductBarcode, LabelProductData, Party } from "@/types";
 
 interface ProductFormProps {
   categories: Category[];
@@ -48,6 +49,49 @@ function emptyRow(previewBcn = ""): ProductRow {
     mrp: "0",
     quantity: "0",
     previewBcn,
+  };
+}
+
+function cloneRowFrom(source: ProductRow): ProductRow {
+  return {
+    key: crypto.randomUUID(),
+    name: source.name,
+    brand: source.brand,
+    cost_price: source.cost_price,
+    selling_price: source.selling_price,
+    mrp: source.mrp,
+    quantity: source.quantity,
+    previewBcn: "",
+  };
+}
+
+function rowToLabelData(row: ProductRow): LabelProductData {
+  const parsed = parseSizeColorFromName(row.name);
+  return {
+    name: row.name.trim() || `Product ${row.previewBcn}`,
+    barcode: row.previewBcn,
+    sku: row.previewBcn,
+    size: parsed.size,
+    color: parsed.color,
+    sellingPrice: parseFloat(row.selling_price) || 0,
+    mrp: parseFloat(row.mrp) || parseFloat(row.selling_price) || 0,
+  };
+}
+
+function rowToPrintItem(row: ProductRow): BarcodeLabelPrintItem {
+  return rowToLabelData(row);
+}
+
+function createdToPrintItem(product: CreatedProductBarcode): BarcodeLabelPrintItem {
+  const parsed = parseSizeColorFromName(product.name);
+  return {
+    name: product.name,
+    barcode: product.barcode,
+    sku: product.barcode,
+    size: parsed.size,
+    color: parsed.color,
+    sellingPrice: product.selling_price,
+    mrp: product.mrp,
   };
 }
 
@@ -89,7 +133,10 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
       toast.error("Maximum 50 products at once");
       return;
     }
-    setRows((prev) => [...prev, emptyRow()]);
+    setRows((prev) => {
+      const last = prev[prev.length - 1];
+      return [...prev, last ? cloneRowFrom(last) : emptyRow()];
+    });
   };
 
   const removeRow = (key: string) => {
@@ -130,6 +177,30 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
     if (items.length === 0) return;
     await downloadBarcodesPdf(items, "bcn-labels-preview.pdf");
     toast.success("All barcodes downloaded");
+  };
+
+  const handlePrintRow = async (row: ProductRow) => {
+    if (!row.previewBcn) return;
+    await printBarcodeLabelsWithSettings([rowToPrintItem(row)]);
+    toast.success("Print dialog opened — select your TVS LP 46 printer");
+  };
+
+  const handlePrintAllPreview = async () => {
+    const items = rows
+      .filter((row) => row.previewBcn && row.name.trim())
+      .map(rowToPrintItem);
+    if (items.length === 0) {
+      toast.error("Add at least one product with a name");
+      return;
+    }
+    await printBarcodeLabelsWithSettings(items);
+    toast.success(`Print dialog opened for ${items.length} label(s)`);
+  };
+
+  const handlePrintAllCreated = async () => {
+    if (createdProducts.length === 0) return;
+    await printBarcodeLabelsWithSettings(createdProducts.map(createdToPrintItem));
+    toast.success(`Print dialog opened for ${createdProducts.length} label(s)`);
   };
 
   const handleDownloadCreated = async () => {
@@ -182,12 +253,21 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
   if (createdProducts.length > 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Products Created — Download Barcodes</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle>Products Created — Print Barcodes</CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              PDF downloaded automatically. Print all labels via Chrome — select TVS LP 46 DLite Plus.
+            </p>
+          </div>
+          <Button type="button" variant="flipkart" onClick={handlePrintAllCreated}>
+            <Printer className="h-4 w-4 mr-1" />
+            Print All Barcodes
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-600">
-            {createdProducts.length} product(s) saved. Barcode PDF was downloaded automatically.
+            {createdProducts.length} product(s) saved.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {createdProducts.map((product) => (
@@ -216,11 +296,25 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                   label="TVS Print"
                   variant="flipkart"
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-1"
+                  onClick={() => printBarcodeLabelsWithSettings([createdToPrintItem(product)])}
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1" />
+                  Print Label
+                </Button>
               </div>
             ))}
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="flipkart" onClick={handleDownloadCreated}>
+            <Button type="button" variant="flipkart" onClick={handlePrintAllCreated}>
+              <Printer className="h-4 w-4 mr-1" />
+              Print All Barcodes
+            </Button>
+            <Button type="button" variant="outline" onClick={handleDownloadCreated}>
               <Download className="h-4 w-4 mr-1" />
               Download All (PDF)
             </Button>
@@ -309,13 +403,19 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
           <div>
             <CardTitle>Add Products (Bulk)</CardTitle>
             <p className="text-sm text-gray-500 mt-1">
-              BCN auto-generates as scannable CODE128 barcode — download anytime before or after save
+              BCN auto-generates as scannable CODE128. Add Another Product copies the row above — edit as needed.
             </p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleDownloadAllPreview}>
-            <Download className="h-4 w-4 mr-1" />
-            Download All Labels
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="flipkart" size="sm" onClick={handlePrintAllPreview}>
+              <Printer className="h-4 w-4 mr-1" />
+              Print All Barcodes
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={handleDownloadAllPreview}>
+              <Download className="h-4 w-4 mr-1" />
+              Download All (PDF)
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="overflow-x-auto">
@@ -330,7 +430,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                   <th className="text-left p-2 font-medium w-24">MRP</th>
                   <th className="text-left p-2 font-medium w-20">Stock</th>
                   <th className="text-left p-2 font-medium w-24">BCN</th>
-                  <th className="text-left p-2 font-medium min-w-[190px]">Barcode</th>
+                  <th className="text-left p-2 font-medium min-w-[190px]">Barcode / Print</th>
                   <th className="p-2 w-10"></th>
                 </tr>
               </thead>
@@ -390,16 +490,38 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
                     <td className="p-2">
                       <div className="flex flex-col items-start gap-1">
                         <BarcodePreview code={row.previewBcn} />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => handleDownloadRow(row)}
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          PNG
-                        </Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handlePrintRow(row)}
+                            disabled={!row.previewBcn}
+                          >
+                            <Printer className="h-3 w-3 mr-1" />
+                            Print
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handleDownloadRow(row)}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            PNG
+                          </Button>
+                        </div>
+                        {row.previewBcn && row.name.trim() && (
+                          <PrintLabelButton
+                            product={rowToLabelData(row)}
+                            quickPrint
+                            label="TVS"
+                            variant="ghost"
+                            size="sm"
+                          />
+                        )}
                       </div>
                     </td>
                     <td className="p-2">
@@ -422,7 +544,7 @@ export function ProductForm({ categories, parties: initialParties }: ProductForm
 
           <Button type="button" variant="outline" onClick={addRow}>
             <Plus className="h-4 w-4 mr-1" />
-            Add Another Product
+            Add Another Product (copies row above)
           </Button>
         </CardContent>
       </Card>
