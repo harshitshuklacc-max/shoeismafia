@@ -140,3 +140,12 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`TVS print service ready → http://127.0.0.1:${PORT}`);
 });
+
+server.on("error", (err) => {
+  if (err && "code" in err && err.code === "EADDRINUSE") {
+    console.log(`TVS print service already on port ${PORT}`);
+    process.exit(0);
+  }
+  console.error(err);
+  process.exit(1);
+});
