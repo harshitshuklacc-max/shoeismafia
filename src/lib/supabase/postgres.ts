@@ -7,38 +7,65 @@ function getProjectRef(): string | null {
   return url.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? null;
 }
 
+/** Vercel is IPv4-only; Supabase direct host (db.*) is IPv6-only — pooler required. */
+function shouldUsePooler(): boolean {
+  if (process.env.DB_USE_POOLER === "true") return true;
+  if (process.env.VERCEL === "1") return true;
+  if (process.env.DB_HOST?.includes("pooler")) return true;
+  return false;
+}
+
 function getPostgresConfig(): pg.PoolConfig {
   const projectRef = getProjectRef();
   const password = process.env.DB_PASSWORD;
+  const base = {
+    password,
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  };
+
+  if (process.env.DATABASE_URL) {
+    return { ...base, connectionString: process.env.DATABASE_URL };
+  }
+
+  const usePooler = shouldUsePooler();
+
+  if (usePooler && projectRef) {
+    const host =
+      process.env.DB_POOLER_HOST ||
+      (process.env.DB_HOST?.includes("pooler") ? process.env.DB_HOST : null) ||
+      "aws-1-ap-northeast-2.pooler.supabase.com";
+    return {
+      ...base,
+      host,
+      port: parseInt(process.env.DB_PORT || "6543", 10),
+      database: process.env.DB_NAME || "postgres",
+      user: process.env.DB_USER || `postgres.${projectRef}`,
+    };
+  }
 
   if (process.env.DB_HOST) {
     const isPooler = process.env.DB_HOST.includes("pooler");
     return {
+      ...base,
       host: process.env.DB_HOST,
       port: parseInt(process.env.DB_PORT || (isPooler ? "6543" : "5432"), 10),
       database: process.env.DB_NAME || "postgres",
       user:
         process.env.DB_USER ||
         (isPooler && projectRef ? `postgres.${projectRef}` : "postgres"),
-      password,
-      ssl: { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
     };
   }
 
   if (projectRef) {
     return {
+      ...base,
       host: `db.${projectRef}.supabase.co`,
       port: parseInt(process.env.DB_PORT || "5432", 10),
       database: process.env.DB_NAME || "postgres",
       user: process.env.DB_USER || "postgres",
-      password,
-      ssl: { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
     };
   }
 
