@@ -6,6 +6,15 @@ const ADMIN_COOKIE = "admin_session";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Print API — admin only
+  if (pathname.startsWith("/api/print")) {
+    const adminToken = request.cookies.get(ADMIN_COOKIE)?.value;
+    if (!adminToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
   // Admin — cookie only, no Supabase network call
   if (pathname.startsWith("/admin")) {
     if (pathname !== "/admin/login") {

@@ -39,7 +39,7 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
       const ready = await isPrintServiceAvailable();
       setServiceReady(ready);
       if (!ready) {
-        toast.error("Print service not running. Restart with: npm run dev");
+        toast.error("Print service unavailable. Start the app on this PC with: npm start");
         return;
       }
       const { printers: found, detected } = await autoDetectTvsPrinter(settings.printerName);
@@ -85,7 +85,7 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600">
-          Direct TSPL printing to TVS LP 46 via USB. No extra software — print service runs with the app.
+          Direct TSPL printing to TVS LP 46 via USB. The app must run on the same PC as the printer (npm start).
         </p>
 
         <div className="rounded-lg bg-gray-50 border p-3 text-xs text-gray-600">
@@ -94,7 +94,7 @@ export function PrinterSettingsPanel({ initialSettings }: PrinterSettingsPanelPr
             ? "Checking…"
             : serviceReady
               ? "Running (built-in)"
-              : "Not running — restart with npm run dev"}
+              : "Not available — start app on this PC with npm start"}
           {!serviceReady && serviceReady !== null && (
             <p className="mt-1">{printSetupHint()}</p>
           )}

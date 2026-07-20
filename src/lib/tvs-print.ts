@@ -2,7 +2,8 @@
 
 import { TVS_PRINTER_PATTERNS } from "@/lib/tspl";
 
-const AGENT_BASE = "http://127.0.0.1:9283";
+/** Same-origin API — works after HTTPS deployment (avoids mixed-content blocks). */
+const PRINT_API = "/api/print";
 
 export function detectTvsPrinter(
   printers: string[],
@@ -20,10 +21,12 @@ export function detectTvsPrinter(
 
 export async function isPrintServiceAvailable(): Promise<boolean> {
   try {
-    const res = await fetch(`${AGENT_BASE}/health`, {
-      signal: AbortSignal.timeout(2500),
+    const res = await fetch(`${PRINT_API}/health`, {
+      signal: AbortSignal.timeout(5000),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const data = (await res.json()) as { ok?: boolean };
+    return data.ok === true;
   } catch {
     return false;
   }
@@ -33,14 +36,14 @@ export async function isPrintServiceAvailable(): Promise<boolean> {
 export const isQzAvailable = isPrintServiceAvailable;
 
 export async function listInstalledPrinters(): Promise<string[]> {
-  const res = await fetch(`${AGENT_BASE}/printers`, {
-    signal: AbortSignal.timeout(10000),
+  const res = await fetch(`${PRINT_API}/printers`, {
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(
       (data as { error?: string }).error ||
-        "Print service not running. Run: npm run dev"
+        "Print service unavailable. Start the app on this PC with: npm start"
     );
   }
   const data = (await res.json()) as { printers?: string[] };
@@ -51,11 +54,16 @@ export async function autoDetectTvsPrinter(savedName?: string): Promise<{
   printers: string[];
   detected: string | null;
 }> {
-  const res = await fetch(`${AGENT_BASE}/printers`, {
-    signal: AbortSignal.timeout(10000),
+  const query = savedName ? `?savedName=${encodeURIComponent(savedName)}` : "";
+  const res = await fetch(`${PRINT_API}/printers${query}`, {
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
-    throw new Error("Print service not running. Restart with: npm run dev");
+    const data = await res.json().catch(() => ({}));
+    throw new Error(
+      (data as { error?: string }).error ||
+        "Print service unavailable. Start the app on this PC with: npm start"
+    );
   }
   const data = (await res.json()) as { printers?: string[]; detected?: string | null };
   const printers = data.printers || [];
@@ -69,7 +77,7 @@ export async function printRawTspl(
   printerName: string,
   tspl: string
 ): Promise<{ method: "agent" }> {
-  const res = await fetch(`${AGENT_BASE}/print`, {
+  const res = await fetch(`${PRINT_API}/print`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ printerName, tspl }),
@@ -96,7 +104,7 @@ export function downloadTsplFile(tspl: string, filename = "label.tspl"): void {
 }
 
 export function printSetupHint(): string {
-  return "Print service runs automatically with npm run dev. Plug in TVS LP 46 via USB, then click Auto-detect TVS Printer.";
+  return "Run the app on this PC (npm start), plug in TVS LP 46 via USB, then click Auto-detect TVS Printer.";
 }
 
 /** @deprecated */
