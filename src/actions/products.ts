@@ -15,6 +15,13 @@ import type {
 } from "@/types";
 import { slugify } from "@/lib/utils";
 
+function withCatalogFallback<T>(fallback: T, fn: () => Promise<T>): Promise<T> {
+  return fn().catch((error) => {
+    console.error("Catalog query failed:", error);
+    return fallback;
+  });
+}
+
 function revalidateCatalog() {
   revalidatePath("/products");
   revalidatePath("/");
@@ -30,6 +37,7 @@ export async function getProducts(options?: {
   limit?: number;
   featured?: boolean;
 }): Promise<{ products: Product[]; total: number }> {
+  return withCatalogFallback({ products: [], total: 0 }, async () => {
   const page = options?.page || 1;
   const limit = options?.limit || 20;
   const offset = (page - 1) * limit;
@@ -87,6 +95,7 @@ export async function getProducts(options?: {
   const total = parseInt(countRows[0]?.count || "0");
 
   return { products, total };
+  });
 }
 
 export async function getProduct(slug: string): Promise<Product | null> {
@@ -123,10 +132,16 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
 
 export async function getCategories(): Promise<Category[]> {
   return unstable_cache(
-    () =>
-      dbQuery<Category>(
-        "SELECT * FROM categories WHERE is_active = true ORDER BY sort_order"
-      ),
+    async () => {
+      try {
+        return await dbQuery<Category>(
+          "SELECT * FROM categories WHERE is_active = true ORDER BY sort_order"
+        );
+      } catch (error) {
+        console.error("Catalog query failed:", error);
+        return [];
+      }
+    },
     ["shop-categories"],
     { revalidate: 300, tags: ["categories"] }
   )();
@@ -134,10 +149,16 @@ export async function getCategories(): Promise<Category[]> {
 
 export async function getBanners(): Promise<Banner[]> {
   return unstable_cache(
-    () =>
-      dbQuery<Banner>(
-        "SELECT * FROM banners WHERE is_active = true ORDER BY sort_order"
-      ),
+    async () => {
+      try {
+        return await dbQuery<Banner>(
+          "SELECT * FROM banners WHERE is_active = true ORDER BY sort_order"
+        );
+      } catch (error) {
+        console.error("Catalog query failed:", error);
+        return [];
+      }
+    },
     ["shop-banners"],
     { revalidate: 300, tags: ["banners"] }
   )();

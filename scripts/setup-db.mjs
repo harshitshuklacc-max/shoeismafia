@@ -6,11 +6,15 @@ import pg from "pg";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main() {
+  const PROJECT_REF =
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ||
+    "syovcgsxqogywygaoykm";
+
   const client = new pg.Client({
-    host: process.env.DB_HOST || "aws-1-ap-south-1.pooler.supabase.com",
-    port: parseInt(process.env.DB_PORT || "6543"),
+    host: process.env.DB_HOST || `db.${PROJECT_REF}.supabase.co`,
+    port: parseInt(process.env.DB_PORT || "5432"),
     database: process.env.DB_NAME || "postgres",
-    user: process.env.DB_USER || "postgres.fsvamqiyukmkltjxabrg",
+    user: process.env.DB_USER || "postgres",
     password: process.env.DB_PASSWORD,
     ssl: { rejectUnauthorized: false },
   });
